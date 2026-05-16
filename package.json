@@ -1,0 +1,69 @@
+{
+  "name": "md-txt-browser",
+  "version": "1.0.0",
+  "description": "Minimalist Desktop File Browser for Ubuntu - Browse and preview .md and .txt files",
+  "main": "./out/main/index.js",
+  "homepage": "https://github.com/example/md-txt-browser",
+  "author": {
+    "name": "MD-TXT Browser Author",
+    "email": "author@example.com"
+  },
+  "scripts": {
+    "dev": "NO_SANDBOX=1 electron-vite dev",
+    "build": "electron-vite build",
+    "build:linux": "electron-vite build && electron-builder --linux",
+    "preview": "NO_SANDBOX=1 electron-vite preview"
+  },
+  "keywords": [
+    "electron",
+    "markdown",
+    "txt",
+    "browser",
+    "ubuntu"
+  ],
+  "license": "ISC",
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.5.0",
+    "electron": "^30.0.1",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.1.0",
+    "pngjs": "^7.0.0",
+    "postcss": "^8.5.14",
+    "vite": "^5.2.0"
+  },
+  "dependencies": {
+    "@tailwindcss/typography": "^0.5.12",
+    "electron-log": "^5.1.2",
+    "framer-motion": "^11.2.4",
+    "highlight.js": "^11.9.0",
+    "lucide-react": "^0.378.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-markdown": "^9.0.1",
+    "rehype-highlight": "^7.0.0",
+    "remark-gfm": "^4.0.0",
+    "tailwindcss": "^3.4.3"
+  },
+  "build": {
+    "appId": "com.example.md-txt-browser",
+    "productName": "MD-TXT Browser",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*"
+    ],
+    "linux": {
+      "target": [
+        "deb",
+        "AppImage"
+      ],
+      "category": "Utility",
+      "icon": "build/icon.png"
+    },
+    "deb": {
+      "depends": []
+    }
+  }
+}
