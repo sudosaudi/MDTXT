@@ -1,4 +1,4 @@
-# MD-TXT Browser
+# MDTXT
 
 A minimalist desktop app for Linux that lets you browse folders and preview `.md` (Markdown) and `.txt` (plain text) files side-by-side. Built with Electron + React.
 
@@ -12,25 +12,23 @@ A minimalist desktop app for Linux that lets you browse folders and preview `.md
 - Keyboard navigation (arrow keys + Enter)
 - Custom dark UI with minimize/maximize/close window controls
 
-## Installation (Linux)
+## Download & Install (Linux)
 
-### Option 1 — .deb package (Ubuntu/Debian)
+**[⬇ Download latest release](https://github.com/aalrehan/md-txt-browser/releases/latest)**
 
-Download the latest `.deb` from the [Releases](https://github.com/aalrehan/md-txt-browser/releases) page, then:
+### Option 1 — .deb package (Ubuntu / Debian)
 
 ```bash
-sudo dpkg -i md-txt-browser_1.0.0_amd64.deb
+sudo dpkg -i mdtxt_1.1.0_amd64.deb
 ```
 
-Launch from your app menu or run `md-txt-browser` in the terminal.
+Launch from your app menu or run `mdtxt` in the terminal.
 
-### Option 2 — AppImage
-
-Download the `.AppImage` from [Releases](https://github.com/aalrehan/md-txt-browser/releases), make it executable, and run it:
+### Option 2 — AppImage (any Linux distro)
 
 ```bash
-chmod +x md-txt-browser-1.0.0.AppImage
-./md-txt-browser-1.0.0.AppImage --no-sandbox
+chmod +x MDTXT-1.1.0.AppImage
+./MDTXT-1.1.0.AppImage
 ```
 
 ## Development Setup
