@@ -1,8 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, protocol, net } = require('electron')
 const path = require('path')
 const fs = require('fs')
-
-app.commandLine.appendSwitch('no-sandbox')
+const { pathToFileURL } = require('url')
 
 let mainWindow = null
 
@@ -33,7 +32,8 @@ app.whenReady().then(() => {
   protocol.handle('local-files', (request) => {
     const rawPath = request.url.replace('local-files://', '')
     const filePath = decodeURIComponent(rawPath)
-    return net.fetch('file://' + filePath)
+    const fileUrl = pathToFileURL(filePath).href
+    return net.fetch(fileUrl)
   })
 
   createWindow()

@@ -54,11 +54,15 @@ function CustomImage({ src, alt }) {
 
   let imageSrc = src
 
-  if (src && !src.startsWith('http://') && !src.startsWith('https://')) {
+  if (src && !src.startsWith('http://') && !src.startsWith('https://') && !src.startsWith('local-files://')) {
     if (selectedFile) {
-      const lastSlash = selectedFile.path.lastIndexOf('/')
+      const lastSlash = Math.max(
+        selectedFile.path.lastIndexOf('/'),
+        selectedFile.path.lastIndexOf('\\')
+      )
       const fileDir = lastSlash > 0 ? selectedFile.path.substring(0, lastSlash) : ''
-      const absolutePath = fileDir + '/' + src
+      const sep = selectedFile.path.includes('\\') ? '\\' : '/'
+      const absolutePath = fileDir + sep + src
       imageSrc = 'local-files://' + encodeURIComponent(absolutePath)
     }
   }

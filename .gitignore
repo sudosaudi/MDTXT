@@ -1,9 +1,12 @@
 node_modules/
 dist/
 out/
+linux/
+windows/
 .env
 *.log
 .DS_Store
 release/
 *.deb
 *.AppImage
+*.exe

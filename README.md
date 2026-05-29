@@ -1,8 +1,8 @@
 # MDTXT
 
-**A minimalist desktop file browser for Linux — browse folders and preview `.md` and `.txt` files side-by-side.**
+**A minimalist desktop file browser — browse folders and preview `.md` and `.txt` files side-by-side.**
 
-MDTXT is a frameless, dark-themed desktop application built with Electron and React. Open any folder, navigate its contents in a sidebar, and instantly preview Markdown or plain text files in a clean reading pane. Fully offline, no accounts, no API keys.
+MDTXT is a frameless, dark-themed desktop application built with Electron and React. Open any folder, navigate its contents in a sidebar, and instantly preview Markdown or plain text files in a clean reading pane. Fully offline, no accounts, no API keys. Supports Linux and Windows.
 
 ## Features
 
@@ -16,11 +16,13 @@ MDTXT is a frameless, dark-themed desktop application built with Electron and Re
 - **Toast notifications** — unobtrusive feedback messages
 - **Fully offline** — no network access, no telemetry, no env vars or API keys required
 
-## Download & Install (Linux)
+## Download & Install
 
 **[⬇ Download latest release](https://github.com/aalrehan/MDTXT/releases/latest)**
 
-### Option 1 — `.deb` package (Ubuntu / Debian)
+### Linux
+
+#### Option 1 — `.deb` package (Ubuntu / Debian)
 
 ```bash
 sudo dpkg -i mdtxt_1.1.0_amd64.deb
@@ -28,12 +30,18 @@ sudo dpkg -i mdtxt_1.1.0_amd64.deb
 
 Launch from your app menu or run `mdtxt` in the terminal.
 
-### Option 2 — `.AppImage` (any Linux distro)
+#### Option 2 — `.AppImage` (any Linux distro)
 
 ```bash
 chmod +x MDTXT-1.1.0.AppImage
 ./MDTXT-1.1.0.AppImage
 ```
+
+### Windows
+
+#### NSIS Installer (.exe)
+
+Download `MDTXT Setup 1.1.0.exe` and run it. Follow the setup wizard to install. The app will be available in your Start Menu.
 
 ## Development Setup
 
@@ -46,17 +54,21 @@ npm install
 npm run dev
 ```
 
-> **Note:** The dev script sets `NO_SANDBOX=1` to bypass the Chromium sandbox, which is required on systems where `chrome-sandbox` is not SUID root. This is already configured in `package.json` — no manual steps needed.
+> **Note:** On Linux systems where `chrome-sandbox` is not SUID root, you may need to run with `--no-sandbox`. The built app handles this automatically via the post-install script.
 
 ## Building
 
-Build distributable packages for Linux:
+Build distributable packages:
 
 ```bash
+# Linux (.deb + AppImage)
 npm run build:linux
+
+# Windows (NSIS installer)
+npm run build:win
 ```
 
-This runs `electron-vite build` followed by `electron-builder --linux`. Output (`.deb` and `.AppImage`) is written to the `dist/` directory.
+Output is written to the `dist/` directory.
 
 ## Architecture
 
@@ -115,7 +127,6 @@ The main and renderer processes communicate through these IPC channels:
 
 ## Known Limitations & Ideas
 
-- Linux only (no macOS or Windows builds)
 - No search/filter for large file lists
 - No folder tree — files are displayed in a flat list
 - No light theme
