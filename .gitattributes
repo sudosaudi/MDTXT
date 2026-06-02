@@ -1,0 +1,14 @@
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.gz binary
+*.tar binary
+*.zip binary
+*.AppImage binary
+*.deb binary
+*.exe binary
+*.blockmap binary
