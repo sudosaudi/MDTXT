@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, protocol, net } = require('electron
 const path = require('path')
 const fs = require('fs')
 const { pathToFileURL } = require('url')
+const { autoUpdater } = require('electron-updater')
 
 app.commandLine.appendSwitch('no-sandbox')
 
@@ -120,6 +121,37 @@ function createWindow() {
   }
 }
 
+function setupAutoUpdater() {
+  if (!app.isPackaged) return
+
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+
+  autoUpdater.on('update-available', (info) => {
+    if (mainWindow) {
+      mainWindow.webContents.send('update:available', {
+        version: info.version
+      })
+    }
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    if (mainWindow) {
+      mainWindow.webContents.send('update:downloaded', {
+        version: info.version
+      })
+    }
+  })
+
+  autoUpdater.on('error', (err) => {
+    console.error('Auto-update error:', err && err.message ? err.message : err)
+  })
+
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch(() => {})
+  }, 3000)
+}
+
 app.whenReady().then(() => {
   protocol.handle('local-files', (request) => {
     try {
@@ -139,6 +171,7 @@ app.whenReady().then(() => {
   })
 
   createWindow()
+  setupAutoUpdater()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -351,4 +384,10 @@ ipcMain.handle('store:setLastOpenedFolder', (_event, folderPath) => {
   state.lastOpenedFolder = folderPath ? path.resolve(folderPath) : null
   writeState(state)
   return { ok: true }
+})
+
+ipcMain.handle('update:install', () => {
+  if (app.isPackaged) {
+    autoUpdater.quitAndInstall()
+  }
 })

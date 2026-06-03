@@ -14,6 +14,7 @@ export function AppProvider({ children }) {
   const [highlights, setHighlights] = useState({})
   const [recentFolders, setRecentFolders] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [updateInfo, setUpdateInfo] = useState(null)
   const saveTimersRef = useRef({})
   const hasRestoredRef = useRef(false)
 
@@ -128,6 +129,20 @@ export function AppProvider({ children }) {
     setSearchQuery('')
   }, [rootFolderPath])
 
+  useEffect(() => {
+    if (!window.electronAPI || !window.electronAPI.onUpdateAvailable) return
+    const unsubscribe = window.electronAPI.onUpdateAvailable((data) => {
+      setUpdateInfo(data)
+    })
+    return unsubscribe
+  }, [])
+
+  const handleInstallUpdate = useCallback(() => {
+    if (window.electronAPI && window.electronAPI.installUpdate) {
+      window.electronAPI.installUpdate()
+    }
+  }, [])
+
   const value = {
     rootFolderPath,
     setRootFolderPath,
@@ -146,7 +161,9 @@ export function AppProvider({ children }) {
     persistHighlights,
     recentFolders,
     searchQuery,
-    setSearchQuery
+    setSearchQuery,
+    updateInfo,
+    handleInstallUpdate
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
