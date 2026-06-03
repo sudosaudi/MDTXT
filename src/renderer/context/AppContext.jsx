@@ -18,6 +18,15 @@ export function AppProvider({ children }) {
   const saveTimersRef = useRef({})
   const hasRestoredRef = useRef(false)
 
+  const showToast = useCallback((message) => {
+    setToastMessage(message)
+    setToastVisible(true)
+    setTimeout(() => {
+      setToastVisible(false)
+      setTimeout(() => setToastMessage(null), 300)
+    }, 3000)
+  }, [])
+
   useEffect(() => {
     const savedZoom = localStorage.getItem('md-browser-zoom')
     if (savedZoom) {
@@ -51,15 +60,6 @@ export function AppProvider({ children }) {
       }
     })
   }, [showToast])
-
-  const showToast = useCallback((message) => {
-    setToastMessage(message)
-    setToastVisible(true)
-    setTimeout(() => {
-      setToastVisible(false)
-      setTimeout(() => setToastMessage(null), 300)
-    }, 3000)
-  }, [])
 
   const scanFolder = useCallback(async (folderPath) => {
     const result = await window.electronAPI.scanFolder(folderPath)
