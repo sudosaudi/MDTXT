@@ -39,6 +39,38 @@ function writeHighlightsStore(store) {
   }
 }
 
+const MAX_RECENT_FOLDERS = 5
+
+function getStateFile() {
+  return path.join(app.getPath('userData'), 'app-state.json')
+}
+
+function readState() {
+  try {
+    const file = getStateFile()
+    if (!fs.existsSync(file)) return { recentFolders: [], lastOpenedFolder: null }
+    const raw = fs.readFileSync(file, 'utf-8')
+    const parsed = JSON.parse(raw)
+    return {
+      recentFolders: Array.isArray(parsed.recentFolders) ? parsed.recentFolders : [],
+      lastOpenedFolder: typeof parsed.lastOpenedFolder === 'string' ? parsed.lastOpenedFolder : null
+    }
+  } catch (e) {
+    return { recentFolders: [], lastOpenedFolder: null }
+  }
+}
+
+function writeState(state) {
+  try {
+    const file = getStateFile()
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, JSON.stringify(state, null, 2), 'utf-8')
+    return true
+  } catch (e) {
+    return false
+  }
+}
+
 function sanitizeErrorMessage(err) {
   if (!err || typeof err.message !== 'string') return 'operation failed'
   return err.message.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 200)
@@ -288,4 +320,35 @@ ipcMain.handle('highlights:save', (_event, filePath, highlights) => {
   }
   const ok = writeHighlightsStore(store)
   return { ok }
+})
+
+ipcMain.handle('store:getRecentFolders', () => {
+  const state = readState()
+  return state.recentFolders
+})
+
+ipcMain.handle('store:addRecentFolder', (_event, folderPath) => {
+  if (typeof folderPath !== 'string' || !folderPath) return []
+  const state = readState()
+  const resolved = path.resolve(folderPath)
+  state.recentFolders = state.recentFolders.filter((p) => path.resolve(p) !== resolved)
+  state.recentFolders.unshift(resolved)
+  if (state.recentFolders.length > MAX_RECENT_FOLDERS) {
+    state.recentFolders = state.recentFolders.slice(0, MAX_RECENT_FOLDERS)
+  }
+  writeState(state)
+  return state.recentFolders
+})
+
+ipcMain.handle('store:getLastOpenedFolder', () => {
+  const state = readState()
+  return state.lastOpenedFolder
+})
+
+ipcMain.handle('store:setLastOpenedFolder', (_event, folderPath) => {
+  if (typeof folderPath !== 'string') return { ok: false }
+  const state = readState()
+  state.lastOpenedFolder = folderPath ? path.resolve(folderPath) : null
+  writeState(state)
+  return { ok: true }
 })

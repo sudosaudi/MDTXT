@@ -12,7 +12,10 @@ export function AppProvider({ children }) {
   const [toastMessage, setToastMessage] = useState(null)
   const [toastVisible, setToastVisible] = useState(false)
   const [highlights, setHighlights] = useState({})
+  const [recentFolders, setRecentFolders] = useState([])
+  const [searchQuery, setSearchQuery] = useState('')
   const saveTimersRef = useRef({})
+  const hasRestoredRef = useRef(false)
 
   useEffect(() => {
     const savedZoom = localStorage.getItem('md-browser-zoom')
@@ -32,6 +35,22 @@ export function AppProvider({ children }) {
     localStorage.setItem('md-browser-zoom', zoomLevel.toString())
   }, [zoomLevel])
 
+  useEffect(() => {
+    window.electronAPI.getRecentFolders().then(setRecentFolders)
+  }, [])
+
+  useEffect(() => {
+    if (hasRestoredRef.current) return
+    hasRestoredRef.current = true
+    window.electronAPI.getLastOpenedFolder().then((folder) => {
+      if (folder) {
+        setRootFolderPath(folder)
+        const folderName = folder.split(/[/\\]/).pop() || folder
+        showToast(`Restored: ${folderName}`)
+      }
+    })
+  }, [showToast])
+
   const showToast = useCallback((message) => {
     setToastMessage(message)
     setToastVisible(true)
@@ -49,6 +68,9 @@ export function AppProvider({ children }) {
       return
     }
     setFiles(result.files)
+    const updatedRecents = await window.electronAPI.addRecentFolder(folderPath)
+    setRecentFolders(updatedRecents)
+    await window.electronAPI.setLastOpenedFolder(folderPath)
   }, [showToast])
 
   const readFileContent = useCallback(async (file) => {
@@ -102,6 +124,10 @@ export function AppProvider({ children }) {
     }
   }, [selectedFile, readFileContent, loadHighlightsForFile])
 
+  useEffect(() => {
+    setSearchQuery('')
+  }, [rootFolderPath])
+
   const value = {
     rootFolderPath,
     setRootFolderPath,
@@ -117,7 +143,10 @@ export function AppProvider({ children }) {
     showToast,
     highlights,
     setHighlights,
-    persistHighlights
+    persistHighlights,
+    recentFolders,
+    searchQuery,
+    setSearchQuery
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

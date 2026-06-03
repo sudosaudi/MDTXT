@@ -8,5 +8,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximize: () => ipcRenderer.invoke('window:maximize'),
   close: () => ipcRenderer.invoke('window:close'),
   loadHighlights: (filePath) => ipcRenderer.invoke('highlights:load', filePath),
-  saveHighlights: (filePath, highlights) => ipcRenderer.invoke('highlights:save', filePath, highlights)
+  saveHighlights: (filePath, highlights) => ipcRenderer.invoke('highlights:save', filePath, highlights),
+  getRecentFolders: () => ipcRenderer.invoke('store:getRecentFolders'),
+  addRecentFolder: (folderPath) => ipcRenderer.invoke('store:addRecentFolder', folderPath),
+  getLastOpenedFolder: () => ipcRenderer.invoke('store:getLastOpenedFolder'),
+  setLastOpenedFolder: (folderPath) => ipcRenderer.invoke('store:setLastOpenedFolder', folderPath)
 })

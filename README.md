@@ -7,6 +7,10 @@ MDTXT is a frameless, dark-themed desktop application built with Electron and Re
 ## Features
 
 - **Folder browser** — pick any directory and see all `.md` and `.txt` files in a sidebar with recursive scanning
+- **Recent folders** — quick access to the last 5 folders you opened, shown in the empty state for one-click re-opening
+- **Remember last folder** — automatically re-opens your most recent folder on startup with a "Restored" toast
+- **Sidebar search & filter** — instantly filter the file list by filename or relative path as you type, with `Esc` to clear
+- **Visual depth in sidebar** — thin indent guides and progressive text opacity make nested folder hierarchies easy to scan
 - **GFM Markdown rendering** — full GitHub-Flavored Markdown support (tables, task lists, strikethrough, autolinks)
 - **Syntax highlighting** — code blocks highlighted with highlight.js across dozens of languages
 - **Plain text viewer** — `.txt` files displayed with line numbers
@@ -28,30 +32,30 @@ MDTXT is a frameless, dark-themed desktop application built with Electron and Re
 
 #### Option 1 — `.deb` package (Ubuntu / Debian)
 
-1. Download `mdtxt_1.2.1_amd64.deb` from the [latest release page](https://github.com/aalrehan/MDTXT/releases/latest).
+1. Download `mdtxt_1.3.0_amd64.deb` from the [latest release page](https://github.com/aalrehan/MDTXT/releases/latest).
 2. Install it:
 
    ```bash
-   sudo dpkg -i mdtxt_1.2.1_amd64.deb
+   sudo dpkg -i mdtxt_1.3.0_amd64.deb
    ```
 
 Launch from your app menu or run `mdtxt` in the terminal.
 
 #### Option 2 — `.AppImage` (any Linux distro)
 
-1. Download `MDTXT-1.2.1.AppImage` from the [latest release page](https://github.com/aalrehan/MDTXT/releases/latest).
+1. Download `MDTXT-1.3.0.AppImage` from the [latest release page](https://github.com/aalrehan/MDTXT/releases/latest).
 2. Make it executable and run it:
 
    ```bash
-   chmod +x MDTXT-1.2.1.AppImage
-   ./MDTXT-1.2.1.AppImage
+   chmod +x MDTXT-1.3.0.AppImage
+   ./MDTXT-1.3.0.AppImage
    ```
 
 ### Windows
 
 #### NSIS Installer (.exe)
 
-1. Download `MDTXT Setup 1.2.1.exe` from the [latest release page](https://github.com/aalrehan/MDTXT/releases/latest).
+1. Download `MDTXT-Setup-1.3.0.exe` from the [latest release page](https://github.com/aalrehan/MDTXT/releases/latest).
 2. Run the installer and follow the setup wizard. The app will be available in your Start Menu.
 
 ## Development Setup
@@ -127,6 +131,10 @@ The main and renderer processes communicate through these IPC channels:
 | `window:close` | Renderer → Main | Closes the window |
 | `highlights:load` | Renderer → Main | Returns the saved highlights for a given file path |
 | `highlights:save` | Renderer → Main | Persists the highlights list for a given file path |
+| `store:getRecentFolders` | Renderer → Main | Returns the list of recently opened folders (max 5) |
+| `store:addRecentFolder` | Renderer → Main | Adds a folder to the top of the recent folders list |
+| `store:getLastOpenedFolder` | Renderer → Main | Returns the last opened folder path for auto-restore |
+| `store:setLastOpenedFolder` | Renderer → Main | Persists the last opened folder path |
 
 ## Tech Stack
 
@@ -142,8 +150,7 @@ The main and renderer processes communicate through these IPC channels:
 
 ## Known Limitations & Ideas
 
-- No search/filter for large file lists
-- No folder tree — files are displayed in a flat list
+- No folder tree — files are displayed in a flat list (with visual indent guides to show nesting)
 - No light theme
 - No TypeScript
 - No file watching (auto-reload on external changes)

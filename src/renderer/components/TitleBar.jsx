@@ -40,11 +40,10 @@ export default function TitleBar() {
       >
         <button
           onClick={handleChooseFolder}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-white/70 hover:text-white hover:bg-white/10 transition-all duration-150"
-          title="Choose Folder"
+          className="p-1.5 rounded-md text-white/60 hover:text-white hover:bg-white/10 transition-all duration-150"
+          title="Open Folder"
         >
-          <FolderOpen size={14} />
-          <span>Choose Folder</span>
+          <FolderOpen size={16} />
         </button>
 
         <div className="w-px h-4 bg-white/20 mx-2" />
