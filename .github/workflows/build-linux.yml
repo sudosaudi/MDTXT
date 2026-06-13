@@ -1,0 +1,78 @@
+name: build-linux
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg fakeroot
+
+      - name: Check tar version (compatibility with fpm 1.9.3)
+        run: |
+          tar --version | head -1
+          if tar --version | head -1 | grep -qE 'tar.*1\.(3[5-9]|[4-9]|[1-9][0-9])'; then
+            echo "GNU tar 1.35+ detected; installing compatibility shim"
+            sudo mkdir -p /opt/tar-shim
+            sudo cp scripts/ci-tar-shim.sh /opt/tar-shim/tar
+            sudo chmod +x /opt/tar-shim/tar
+            echo "/opt/tar-shim" >> $GITHUB_PATH
+          else
+            echo "tar version OK; no shim needed"
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Linux artifacts
+        run: npm run build:linux
+
+      - name: List build outputs
+        run: ls -lah dist/
+
+      - name: Verify .deb is xz-compressed
+        run: |
+          mkdir -p /tmp/deb-check && cd /tmp/deb-check
+          ar x $GITHUB_WORKSPACE/dist/mdtxt_*.deb
+          file data.tar.*
+
+      - name: Verify version and author
+        run: |
+          dpkg-deb --info dist/mdtxt_*.deb | grep -E "Version|Maintainer"
+          mkdir -p /tmp/verify && dpkg-deb -x dist/mdtxt_*.deb /tmp/verify
+          node -e "
+            const asar = require('@electron/asar');
+            asar.extractFile('/tmp/verify/opt/MDTXT/resources/app.asar', 'package.json', '/tmp/pkg.json');
+            const p = require('/tmp/pkg.json');
+            const expected = require('./package.json').version;
+            if (p.version !== expected) throw new Error('version mismatch: bundle=' + p.version + ' expected=' + expected);
+            if (/@(gmail|yahoo|hotmail|outlook|icloud|protonmail)\.com/.test(p.author.email)) throw new Error('personal email leak');
+            console.log('verified version=' + p.version + ', author=' + p.author.name);
+          "
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mdtxt-linux
+          path: |
+            dist/*.deb
+            dist/*.AppImage
+            dist/latest-linux.yml
+          if-no-files-found: error
