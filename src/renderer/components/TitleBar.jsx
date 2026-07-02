@@ -1,9 +1,9 @@
 import React from 'react'
-import { Plus, Minus, Square, X } from 'lucide-react'
+import { Plus, Minus, Square, X, FileDown } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
 export default function TitleBar() {
-  const { zoomLevel, setZoomLevel, rootFolderPath } = useApp()
+  const { zoomLevel, setZoomLevel, rootFolderPath, selectedFile, exportPdf } = useApp()
 
   const handleZoomIn = () => {
     setZoomLevel(Math.min(zoomLevel + 10, 200))
@@ -52,6 +52,19 @@ export default function TitleBar() {
         >
           <Plus size={16} />
         </button>
+
+        {selectedFile && (
+          <>
+            <div className="w-px h-4 bg-border-strong mx-2" />
+            <button
+              onClick={() => exportPdf(selectedFile)}
+              className="p-1.5 rounded-md text-text-secondary hover:text-text-primary hover:bg-accent-soft transition-all duration-150"
+              title="Export PDF"
+            >
+              <FileDown size={16} />
+            </button>
+          </>
+        )}
 
         <div className="w-px h-4 bg-border-strong mx-2" />
 

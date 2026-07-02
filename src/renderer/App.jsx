@@ -3,6 +3,7 @@ import { AppProvider } from './context/AppContext'
 import TitleBar from './components/TitleBar'
 import MainLayout from './components/MainLayout'
 import Toast from './components/Toast'
+import DropZone from './components/DropZone'
 
 function resolveInitialTheme() {
   if (typeof window === 'undefined' || !window.matchMedia) return 'dark'
@@ -66,11 +67,13 @@ export default function App() {
 
   return (
     <AppProvider>
-      <div className="h-screen w-screen flex flex-col bg-bg-primary text-text-primary overflow-hidden transition-colors duration-200">
-        <TitleBar />
-        <MainLayout />
-        <Toast />
-      </div>
+      <DropZone>
+        <div className="h-screen w-screen flex flex-col bg-bg-primary text-text-primary overflow-hidden transition-colors duration-200">
+          <TitleBar />
+          <MainLayout />
+          <Toast />
+        </div>
+      </DropZone>
     </AppProvider>
   )
 }

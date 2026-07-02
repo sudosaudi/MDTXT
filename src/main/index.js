@@ -3,6 +3,8 @@ const path = require('path')
 const fs = require('fs')
 const { pathToFileURL } = require('url')
 const { autoUpdater } = require('electron-updater')
+const { marked } = require('marked')
+const hljs = require('highlight.js')
 
 app.commandLine.appendSwitch('no-sandbox')
 
@@ -409,5 +411,185 @@ ipcMain.handle('store:setTheme', (_event, theme) => {
 ipcMain.handle('update:install', () => {
   if (app.isPackaged) {
     autoUpdater.quitAndInstall()
+  }
+})
+
+ipcMain.handle('file:exportPdf', async (event, filePath) => {
+  try {
+    if (typeof filePath !== 'string' || !filePath) {
+      return { ok: false, error: 'invalid path' }
+    }
+    if (!isPathInsideRoot(filePath, currentRootPath)) {
+      return { ok: false, error: 'file is outside the open folder' }
+    }
+    if (!hasAllowedExtension(filePath)) {
+      return { ok: false, error: 'unsupported file type' }
+    }
+    const stat = fs.statSync(filePath)
+    if (!stat.isFile()) {
+      return { ok: false, error: 'not a regular file' }
+    }
+    if (stat.size > MAX_FILE_BYTES) {
+      return { ok: false, error: 'file too large' }
+    }
+
+    const content = fs.readFileSync(filePath, 'utf-8')
+    const ext = path.extname(filePath).toLowerCase()
+    const baseName = path.basename(filePath, ext)
+    const dirName = path.dirname(filePath)
+
+    const saveResult = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export PDF',
+      defaultPath: path.join(dirName, baseName + '.pdf'),
+      filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
+    })
+
+    if (saveResult.canceled || !saveResult.filePath) {
+      return { ok: false, error: 'canceled' }
+    }
+
+    let bodyHtml
+    if (ext === '.md') {
+      marked.setOptions({
+        gfm: true,
+        breaks: false,
+        highlight: function (code, lang) {
+          if (lang && hljs.getLanguage(lang)) {
+            try {
+              return hljs.highlight(code, { language: lang }).value
+            } catch (e) {}
+          }
+          return hljs.highlightAuto(code).value
+        }
+      })
+      bodyHtml = marked(content)
+    } else {
+      bodyHtml = '<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: \'JetBrains Mono\', monospace; font-size: 10pt; line-height: 1.5;">' +
+        content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') +
+        '</pre>'
+    }
+
+    const css = `
+      @page { margin: 20mm; size: A4; }
+      body {
+        font-family: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+        font-size: 11pt;
+        line-height: 1.6;
+        color: #1a1a1a;
+        max-width: 100%;
+      }
+      h1, h2, h3, h4, h5, h6 {
+        font-family: 'Source Serif 4', Georgia, serif;
+        font-weight: 600;
+        margin-top: 1.2em;
+        margin-bottom: 0.6em;
+        color: #1a1a1a;
+      }
+      h1 { font-size: 1.8em; }
+      h2 { font-size: 1.5em; }
+      h3 { font-size: 1.25em; }
+      p { margin: 0.8em 0; }
+      a { color: #2563eb; text-decoration: underline; }
+      code {
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 9pt;
+        background: #f3f4f6;
+        padding: 1px 4px;
+        border-radius: 3px;
+      }
+      pre {
+        background: #f3f4f6;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        padding: 12px 16px;
+        overflow-x: auto;
+        font-size: 9pt;
+        line-height: 1.5;
+        page-break-inside: avoid;
+      }
+      pre code {
+        background: transparent;
+        padding: 0;
+        border-radius: 0;
+      }
+      blockquote {
+        border-left: 3px solid #d1d5db;
+        margin: 1em 0;
+        padding: 0.5em 0 0.5em 1em;
+        color: #4b5563;
+        font-style: italic;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1em 0;
+        page-break-inside: avoid;
+      }
+      th, td {
+        border: 1px solid #d1d5db;
+        padding: 8px 12px;
+        text-align: left;
+      }
+      th {
+        background: #f9fafb;
+        font-weight: 600;
+      }
+      tr:nth-child(even) td { background: #f9fafb; }
+      img {
+        max-width: 100%;
+        border-radius: 4px;
+        margin: 0.5em 0;
+      }
+      hr {
+        border: none;
+        border-top: 1px solid #e5e7eb;
+        margin: 1.5em 0;
+      }
+      ul, ol { padding-left: 1.5em; margin: 0.5em 0; }
+      li { margin: 0.3em 0; }
+      .hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: #d73a49; }
+      .hljs-string, .hljs-attr { color: #032f62; }
+      .hljs-comment, .hljs-quote { color: #6a737d; font-style: italic; }
+      .hljs-number, .hljs-literal { color: #005cc5; }
+      .hljs-function .hljs-title, .hljs-title.function_ { color: #6f42c1; }
+      .hljs-type, .hljs-class .hljs-title { color: #6f42c1; }
+      .hljs-meta { color: #005cc5; }
+      .hljs-variable, .hljs-template-variable { color: #e36209; }
+      .hljs-bullet { color: #005cc5; }
+      .hljs-addition { color: #22863a; background: #f0fff4; }
+      .hljs-deletion { color: #b31d28; background: #ffeef0; }
+    `
+
+    const htmlDoc = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>${css}</style></head><body>${bodyHtml}</body></html>`
+
+    const pdfWin = new BrowserWindow({
+      show: false,
+      width: 800,
+      height: 1100,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        webSecurity: true
+      }
+    })
+
+    await pdfWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(htmlDoc))
+
+    const pdfData = await pdfWin.webContents.printToPDF({
+      pageSize: 'A4',
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      printBackground: true
+    })
+
+    pdfWin.destroy()
+
+    fs.mkdirSync(path.dirname(saveResult.filePath), { recursive: true })
+    fs.writeFileSync(saveResult.filePath, pdfData)
+
+    return { ok: true, path: saveResult.filePath }
+  } catch (error) {
+    return { ok: false, error: sanitizeErrorMessage(error) }
   }
 })

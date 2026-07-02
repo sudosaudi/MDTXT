@@ -16,6 +16,7 @@ export function AppProvider({ children }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [updateInfo, setUpdateInfo] = useState(null)
   const saveTimersRef = useRef({})
+  const pendingFileRef = useRef(null)
 
   const showToast = useCallback((message) => {
     setToastMessage(message)
@@ -34,9 +35,7 @@ export function AppProvider({ children }) {
         if (!isNaN(parsed) && parsed >= 60 && parsed <= 200) {
           setZoomLevel(parsed)
         }
-      } catch (e) {
-        // silently fall back to 100
-      }
+      } catch (e) {}
     }
   }, [])
 
@@ -103,6 +102,14 @@ export function AppProvider({ children }) {
   }, [rootFolderPath, scanFolder])
 
   useEffect(() => {
+    if (pendingFileRef.current && files.length > 0) {
+      const target = files.find(f => f.path === pendingFileRef.current)
+      if (target) setSelectedFile(target)
+      pendingFileRef.current = null
+    }
+  }, [files])
+
+  useEffect(() => {
     if (selectedFile) {
       readFileContent(selectedFile)
       loadHighlightsForFile(selectedFile.path)
@@ -141,6 +148,18 @@ export function AppProvider({ children }) {
     setRecentFolders(Array.isArray(updated) ? updated : [])
   }, [])
 
+  const exportPdf = useCallback(async (file) => {
+    if (!file) return
+    showToast('Exporting PDF...')
+    const result = await window.electronAPI.exportPdf(file.path)
+    if (result.ok) {
+      const name = result.path.split(/[/\\]/).pop()
+      showToast(`Exported ${name}`)
+    } else if (result.error !== 'canceled') {
+      showToast(result.error || 'Export failed')
+    }
+  }, [showToast])
+
   const value = {
     rootFolderPath,
     setRootFolderPath,
@@ -163,7 +182,9 @@ export function AppProvider({ children }) {
     updateInfo,
     handleInstallUpdate,
     setTheme,
-    clearRecentFolders
+    clearRecentFolders,
+    exportPdf,
+    pendingFileRef
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

@@ -1,6 +1,6 @@
 {
   "name": "mdtxt",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Minimalist Desktop File Browser - Browse and preview .md and .txt files",
   "main": "./out/main/index.js",
   "homepage": "https://github.com/sudosaudi/mdtxt",
@@ -46,6 +46,7 @@
     "framer-motion": "^11.2.4",
     "highlight.js": "^11.9.0",
     "lucide-react": "^0.378.0",
+    "marked": "^18.0.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^9.0.1",
