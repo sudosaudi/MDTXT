@@ -3,7 +3,6 @@ const path = require('path')
 const fs = require('fs')
 const { pathToFileURL } = require('url')
 const { autoUpdater } = require('electron-updater')
-const { marked } = require('marked')
 const hljs = require('highlight.js')
 
 app.commandLine.appendSwitch('no-sandbox')
@@ -450,6 +449,7 @@ ipcMain.handle('file:exportPdf', async (event, filePath) => {
 
     let bodyHtml
     if (ext === '.md') {
+      const { marked } = await import('marked')
       marked.setOptions({
         gfm: true,
         breaks: false,
