@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, useRef } from 'react'
 import { FolderOpen, Search, X, ChevronDown, ChevronUp, Moon, Sun, BookOpen, Library as LibraryIcon, X as XIcon } from 'lucide-react'
 import FileItem from './FileItem'
 import { useApp } from '../context/AppContext'
+import { version } from '../../../package.json'
 
 function ThemeToggle() {
   const [current, setCurrent] = useState(() => {
@@ -251,6 +252,7 @@ export default function Sidebar() {
 
       <div className="border-t border-border-subtle px-2 py-2">
         <ThemeToggle />
+        <p className="text-center text-[11px] text-text-muted mt-1.5 select-none">v{version}</p>
       </div>
     </div>
   )
