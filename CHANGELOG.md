@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-07-07
+
+### Added
+- PDF export: export any open Markdown or plain-text file to a styled A4 PDF via a new title-bar button; uses `marked` + `highlight.js` for rendering
+- Drag-and-drop: drop a folder or file anywhere on the window to open it; dropping a file auto-selects it after the parent folder loads
+- Word count and estimated reading time displayed in a status bar at the bottom of the preview pane
+- `LICENSE` (ISC), `CHANGELOG.md`, and `SECURITY.md` added to the repository
+- Linux CI pipeline (GitHub Actions) that builds `.deb` and `.AppImage` artifacts with asar version/author verification
+
+### Changed
+- Version bumped to 1.4.1
+- Added `marked` as a dependency (for PDF export Markdown-to-HTML conversion)
+- PreviewPane layout restructured to support the bottom status bar
+
 ## [1.4.0] - 2026-06-08
 
 ### Added

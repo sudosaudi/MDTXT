@@ -18,6 +18,9 @@ MDTXT is a frameless desktop application built with Electron and React. Open any
 - **Syntax highlighting** — code blocks highlighted with highlight.js across dozens of languages, with copy button and language label
 - **Plain text viewer** — `.txt` files displayed with line numbers
 - **Yellow text highlighting** — select any text in a preview to highlight it, click to remove; highlights persist across app restarts
+- **PDF export** — export any open Markdown or plain-text file to a styled A4 PDF via a title-bar button; uses `marked` + `highlight.js` for rendering
+- **Drag-and-drop** — drop a folder or file anywhere on the window to open it; dropping a file auto-selects it after the parent folder loads
+- **Word count & reading time** — status bar at the bottom of the preview pane shows word count and estimated reading time
 - **Larger / smaller font** — scale the preview pane for comfortable reading
 - **Keyboard navigation** — browse files with arrow keys and Enter
 - **Frameless UI** — custom title bar with minimize, maximize, and close controls
@@ -36,30 +39,30 @@ MDTXT is a frameless desktop application built with Electron and React. Open any
 
 #### Option 1 — `.deb` package (Ubuntu / Debian)
 
-1. Download `mdtxt_1.4.0_amd64.deb` from the [latest release page](https://github.com/sudosaudi/MDTXT/releases/latest).
+1. Download `mdtxt_1.4.1_amd64.deb` from the [latest release page](https://github.com/sudosaudi/MDTXT/releases/latest).
 2. Install it:
 
    ```bash
-   sudo dpkg -i mdtxt_1.4.0_amd64.deb
+   sudo dpkg -i mdtxt_1.4.1_amd64.deb
    ```
 
 Launch from your app menu or run `mdtxt` in the terminal.
 
 #### Option 2 — `.AppImage` (any Linux distro)
 
-1. Download `MDTXT-1.4.0.AppImage` from the [latest release page](https://github.com/sudosaudi/MDTXT/releases/latest).
+1. Download `MDTXT-1.4.1.AppImage` from the [latest release page](https://github.com/sudosaudi/MDTXT/releases/latest).
 2. Make it executable and run it:
 
    ```bash
-   chmod +x MDTXT-1.4.0.AppImage
-   ./MDTXT-1.4.0.AppImage
+   chmod +x MDTXT-1.4.1.AppImage
+   ./MDTXT-1.4.1.AppImage
    ```
 
 ### Windows
 
 #### NSIS Installer (.exe)
 
-1. Download `MDTXT-Setup-1.4.0.exe` from the [latest release page](https://github.com/sudosaudi/MDTXT/releases/latest).
+1. Download `MDTXT-Setup-1.4.1.exe` from the [latest release page](https://github.com/sudosaudi/MDTXT/releases/latest).
 2. Run the installer and follow the setup wizard. The app will be available in your Start Menu.
 
 ## Development Setup
@@ -105,13 +108,14 @@ src/
     │   ├── MainLayout.jsx           Top-level layout with sidebar + preview
     │   ├── Sidebar.jsx              Choose Folder button, Library section, file list, theme toggle
     │   ├── FileItem.jsx             Individual file entry in the sidebar
-    │   ├── PreviewPane.jsx          File content viewer (delegates to MD or TXT)
+    │   ├── PreviewPane.jsx          File content viewer (delegates to MD or TXT) with word count status bar
     │   ├── MarkdownRenderer.jsx     react-markdown with remark-gfm + rehype-highlight
     │   ├── PlainTextViewer.jsx      Monospace text display with line numbers
     │   ├── HighlightableViewer.jsx  DOM-text-walking overlay that applies <mark> tags
     │   ├── HighlightToolbar.jsx     Floating add/remove highlight button
-    │   ├── TitleBar.jsx             Frameless window title bar with font size controls
+    │   ├── TitleBar.jsx             Frameless window title bar with font size controls and PDF export
     │   ├── EmptyState.jsx           Prompt shown when no folder is open
+    │   ├── DropZone.jsx             Drag-and-drop overlay for opening folders/files
     │   └── Toast.jsx                Animated notification component
     ├── context/
     │   └── AppContext.jsx           Global state: selected file, folder path, zoom level, highlights, theme
@@ -142,6 +146,7 @@ The main and renderer processes communicate through these IPC channels:
 | `store:setLastOpenedFolder` | Renderer → Main | Persists the last opened folder path |
 | `store:getTheme` | Renderer → Main | Returns the saved theme preference (`light`, `dark`, or `null` for system) |
 | `store:setTheme` | Renderer → Main | Persists the user's theme override |
+| `file:exportPdf` | Renderer → Main | Exports the current file to a styled A4 PDF via a native save dialog |
 
 ## Tech Stack
 
@@ -151,6 +156,7 @@ The main and renderer processes communicate through these IPC channels:
 - **electron-vite** — Vite-powered build tooling for Electron
 - **electron-builder** — packaging and distribution
 - **react-markdown + remark-gfm** — Markdown parsing and rendering
+- **marked** — Markdown-to-HTML conversion for PDF export
 - **rehype-highlight + highlight.js** — code block syntax highlighting
 - **Source Serif 4** — primary typography
 - **JetBrains Mono** — code and `.txt` viewer typography
