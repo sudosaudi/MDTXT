@@ -20,7 +20,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onUpdateAvailable: (callback) => {
     const sub1 = ipcRenderer.on('update:available', (_e, data) => callback({ type: 'available', ...data }))
     const sub2 = ipcRenderer.on('update:downloaded', (_e, data) => callback({ type: 'downloaded', ...data }))
-    return () => { sub1(); sub2() }
+    const sub3 = ipcRenderer.on('update:error', (_e, data) => callback({ type: 'error', ...data }))
+    return () => { sub1(); sub2(); sub3() }
   },
   installUpdate: () => ipcRenderer.invoke('update:install')
 })

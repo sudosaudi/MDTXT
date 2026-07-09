@@ -4,9 +4,10 @@ import { AlertCircle, Download } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
 export default function Toast() {
-  const { toastMessage, toastVisible, updateInfo, handleInstallUpdate } = useApp()
+  const { toastMessage, toastVisible, updateInfo, updateDownloaded, handleInstallUpdate } = useApp()
 
   if (updateInfo) {
+    const downloaded = updateDownloaded
     return (
       <div className="fixed bottom-4 right-4 z-50">
         <motion.div
@@ -19,18 +20,20 @@ export default function Toast() {
           <Download size={18} className="text-accent flex-shrink-0" />
           <div className="flex flex-col">
             <span className="text-sm text-text-primary font-semibold">
-              Update v{updateInfo.version} ready
+              {downloaded ? `Update v${updateInfo.version} ready` : `Update v${updateInfo.version} available`}
             </span>
             <span className="text-xs text-text-secondary">
-              Restart to apply
+              {downloaded ? 'Restart to apply' : 'Downloading…'}
             </span>
           </div>
-          <button
-            onClick={handleInstallUpdate}
-            className="ml-2 px-3 py-1 rounded-md bg-accent-soft hover:bg-accent text-accent hover:text-white text-xs font-semibold transition-colors"
-          >
-            Restart
-          </button>
+          {downloaded && (
+            <button
+              onClick={handleInstallUpdate}
+              className="ml-2 px-3 py-1 rounded-md bg-accent-soft hover:bg-accent text-accent hover:text-white text-xs font-semibold transition-colors"
+            >
+              Restart
+            </button>
+          )}
         </motion.div>
       </div>
     )

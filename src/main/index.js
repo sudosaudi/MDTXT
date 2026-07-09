@@ -147,6 +147,11 @@ function setupAutoUpdater() {
 
   autoUpdater.on('error', (err) => {
     console.error('Auto-update error:', err && err.message ? err.message : err)
+    if (mainWindow) {
+      mainWindow.webContents.send('update:error', {
+        message: err && err.message ? err.message : String(err)
+      })
+    }
   })
 
   setTimeout(() => {
@@ -408,8 +413,15 @@ ipcMain.handle('store:setTheme', (_event, theme) => {
 })
 
 ipcMain.handle('update:install', () => {
-  if (app.isPackaged) {
-    autoUpdater.quitAndInstall()
+  if (!app.isPackaged) return
+  try {
+    autoUpdater.quitAndInstall(false, true)
+  } catch (e) {
+    if (mainWindow) {
+      mainWindow.webContents.send('update:error', {
+        message: e && e.message ? e.message : String(e)
+      })
+    }
   }
 })
 

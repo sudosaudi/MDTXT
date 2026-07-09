@@ -15,6 +15,7 @@ export function AppProvider({ children }) {
   const [recentFolders, setRecentFolders] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [updateInfo, setUpdateInfo] = useState(null)
+  const [updateDownloaded, setUpdateDownloaded] = useState(false)
   const saveTimersRef = useRef({})
   const pendingFileRef = useRef(null)
 
@@ -126,16 +127,28 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (!window.electronAPI || !window.electronAPI.onUpdateAvailable) return
     const unsubscribe = window.electronAPI.onUpdateAvailable((data) => {
-      setUpdateInfo(data)
+      if (data.type === 'downloaded') {
+        setUpdateInfo(data)
+        setUpdateDownloaded(true)
+      } else if (data.type === 'available') {
+        setUpdateInfo(data)
+        setUpdateDownloaded(false)
+      } else if (data.type === 'error') {
+        showToast('Update failed: ' + (data.message || 'unknown error'))
+      }
     })
     return unsubscribe
-  }, [])
+  }, [showToast])
 
   const handleInstallUpdate = useCallback(() => {
+    if (!updateDownloaded) {
+      showToast('Update still downloading…')
+      return
+    }
     if (window.electronAPI && window.electronAPI.installUpdate) {
       window.electronAPI.installUpdate()
     }
-  }, [])
+  }, [updateDownloaded, showToast])
 
   const setTheme = useCallback((next) => {
     if (next !== 'light' && next !== 'dark' && next !== null) return
@@ -180,6 +193,7 @@ export function AppProvider({ children }) {
     searchQuery,
     setSearchQuery,
     updateInfo,
+    updateDownloaded,
     handleInstallUpdate,
     setTheme,
     clearRecentFolders,
