@@ -3,23 +3,33 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import { Copy, Check } from 'lucide-react'
-import { useApp } from '../context/AppContext'
+import { useUI } from '../context/UIContext'
+import { useFiles } from '../context/FilesContext'
 import HighlightableViewer from './HighlightableViewer'
 
-function CustomCodeBlock({ node, inline, className, children, ...props }) {
+// Recursively extracts plain text from rendered children. After
+// rehype-highlight runs, code content is a tree of <span> elements, so the
+// old String(children) approach silently copied "[object Object]".
+function extractText(node) {
+  if (node == null || node === false || node === true) return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(extractText).join('')
+  if (React.isValidElement(node)) return extractText(node.props.children)
+  return ''
+}
+
+// react-markdown v9 no longer passes an `inline` prop to `code`. The v9
+// pattern: override `pre` for block rendering (wrapper, language label, copy
+// button) and leave `code` at its default — inline code is styled via CSS
+// (`.mdt-prose code:not(pre code)`).
+function CustomPre({ children }) {
   const [copied, setCopied] = useState(false)
 
-  if (inline) {
-    return (
-      <code className="bg-code-inline rounded px-1.5 py-0.5 text-sm font-mono text-text-primary" {...props}>
-        {children}
-      </code>
-    )
-  }
-
-  const match = /language-(\w+)/.exec(className || '')
+  const codeEl = React.Children.toArray(children).find(React.isValidElement)
+  const className = (codeEl && codeEl.props && codeEl.props.className) || ''
+  const match = /language-(\w+)/.exec(className)
   const language = match ? match[1] : ''
-  const codeString = String(children).replace(/\n$/, '')
+  const codeString = extractText(codeEl ? codeEl.props.children : children).replace(/\n$/, '')
 
   const handleCopy = () => {
     navigator.clipboard.writeText(codeString)
@@ -45,16 +55,14 @@ function CustomCodeBlock({ node, inline, className, children, ...props }) {
         className="bg-bg-code rounded-lg p-4 overflow-x-auto border border-border-subtle"
         style={{ boxShadow: 'var(--code-block-shadow)' }}
       >
-        <code className={`language-${language}`} {...props}>
-          {children}
-        </code>
+        {children}
       </pre>
     </div>
   )
 }
 
 function CustomImage({ src, alt }) {
-  const { selectedFile } = useApp()
+  const { selectedFile } = useFiles()
 
   let imageSrc = src
 
@@ -81,9 +89,10 @@ function CustomImage({ src, alt }) {
   )
 }
 
-export default function MarkdownRenderer({ content, themeClass }) {
-  const { zoomLevel, selectedFile } = useApp()
-  const isDark = themeClass !== 'theme-light'
+export default function MarkdownRenderer({ content }) {
+  const { zoomLevel, theme } = useUI()
+  const { selectedFile } = useFiles()
+  const isDark = theme !== 'light'
 
   return (
     <HighlightableViewer filePath={selectedFile?.path}>
@@ -95,7 +104,7 @@ export default function MarkdownRenderer({ content, themeClass }) {
           remarkPlugins={[remarkGfm]}
           rehypePlugins={[rehypeHighlight]}
           components={{
-            code: CustomCodeBlock,
+            pre: CustomPre,
             img: CustomImage
           }}
         >

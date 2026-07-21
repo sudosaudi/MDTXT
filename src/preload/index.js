@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
   chooseFolder: () => ipcRenderer.invoke('dialog:openFolder'),
+  statPath: (targetPath) => ipcRenderer.invoke('fs:stat', targetPath),
   scanFolder: (folderPath) => ipcRenderer.invoke('fs:scanFolder', folderPath),
   readFile: (filePath) => ipcRenderer.invoke('fs:readFile', filePath),
   exportPdf: (filePath) => ipcRenderer.invoke('file:exportPdf', filePath),
@@ -13,8 +14,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getRecentFolders: () => ipcRenderer.invoke('store:getRecentFolders'),
   addRecentFolder: (folderPath) => ipcRenderer.invoke('store:addRecentFolder', folderPath),
   clearRecentFolders: () => ipcRenderer.invoke('store:clearRecentFolders'),
-  getLastOpenedFolder: () => ipcRenderer.invoke('store:getLastOpenedFolder'),
-  setLastOpenedFolder: (folderPath) => ipcRenderer.invoke('store:setLastOpenedFolder', folderPath),
   getTheme: () => ipcRenderer.invoke('store:getTheme'),
   setTheme: (theme) => ipcRenderer.invoke('store:setTheme', theme),
   onUpdateAvailable: (callback) => {

@@ -1,9 +1,11 @@
 import React, { useRef } from 'react'
-import { useApp } from '../context/AppContext'
+import { useUI } from '../context/UIContext'
+import { useFiles } from '../context/FilesContext'
 import HighlightableViewer from './HighlightableViewer'
 
 export default function PlainTextViewer({ content }) {
-  const { zoomLevel, selectedFile } = useApp()
+  const { zoomLevel } = useUI()
+  const { selectedFile } = useFiles()
   const contentRef = useRef(null)
 
   if (!content) {

@@ -1,31 +1,15 @@
 import React, { useState, useCallback, useMemo, useRef } from 'react'
 import { FolderOpen, Search, X, ChevronDown, ChevronUp, Moon, Sun, BookOpen, Library as LibraryIcon, X as XIcon } from 'lucide-react'
 import FileItem from './FileItem'
-import { useApp } from '../context/AppContext'
+import { useFiles } from '../context/FilesContext'
+import { useUI } from '../context/UIContext'
 import { version } from '../../../package.json'
 
 function ThemeToggle() {
-  const [current, setCurrent] = useState(() => {
-    if (typeof document === 'undefined') return 'dark'
-    return document.documentElement.classList.contains('theme-light') ? 'light' : 'dark'
-  })
+  const { theme, setTheme } = useUI()
+  const isLight = theme === 'light'
 
-  React.useEffect(() => {
-    const handler = (e) => {
-      if (e.detail === 'light' || e.detail === 'dark') {
-        setCurrent(e.detail)
-      }
-    }
-    window.addEventListener('mdtxt:theme-change', handler)
-    return () => window.removeEventListener('mdtxt:theme-change', handler)
-  }, [])
-
-  const isLight = current === 'light'
-
-  const toggle = () => {
-    const next = isLight ? 'dark' : 'light'
-    window.dispatchEvent(new CustomEvent('mdtxt:theme-change', { detail: next }))
-  }
+  const toggle = () => setTheme(isLight ? 'dark' : 'light')
 
   return (
     <button
@@ -105,6 +89,7 @@ function LibrarySection({ recentFolders, onSelect, onClear }) {
   )
 }
 
+
 export default function Sidebar() {
   const {
     rootFolderPath,
@@ -115,17 +100,12 @@ export default function Sidebar() {
     setSearchQuery,
     recentFolders,
     setRootFolderPath,
+    openFolderViaDialog,
     clearRecentFolders
-  } = useApp()
+  } = useFiles()
   const [focusedIndex, setFocusedIndex] = useState(-1)
   const inputRef = useRef(null)
-
-  const handleChooseFolder = async () => {
-    const result = await window.electronAPI.chooseFolder()
-    if (!result.canceled && result.filePaths.length > 0) {
-      setRootFolderPath(result.filePaths[0])
-    }
-  }
+  const sidebarRef = useRef(null)
 
   const filteredFiles = useMemo(() => {
     if (!searchQuery.trim()) return files
@@ -136,11 +116,29 @@ export default function Sidebar() {
   }, [files, searchQuery])
 
   const handleKeyDown = useCallback((e) => {
+    const target = e.target
+    const inEditable = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+
+    // Never steal keys from text inputs — except Esc clearing our own search.
+    if (inEditable) {
+      if (e.key === 'Escape' && target === inputRef.current && searchQuery) {
+        e.preventDefault()
+        setSearchQuery('')
+      }
+      return
+    }
+
+    // Only navigate files when focus is on the app chrome (body) or inside
+    // the sidebar; leave arrows/Enter alone when the preview pane (or any
+    // other focusable area) owns the focus.
+    const active = document.activeElement
+    const focusInSidebar = sidebarRef.current && sidebarRef.current.contains(active)
+    const focusOnBody = !active || active === document.body || active === document.documentElement
+    if (!focusInSidebar && !focusOnBody) return
+
     if (e.key === 'Escape' && searchQuery) {
       e.preventDefault()
-      e.stopPropagation()
       setSearchQuery('')
-      inputRef.current?.focus()
       return
     }
 
@@ -170,10 +168,10 @@ export default function Sidebar() {
   }, [searchQuery])
 
   return (
-    <div className="w-[280px] flex-shrink-0 flex flex-col bg-bg-sidebar border-r border-border-subtle transition-colors duration-200">
+    <div ref={sidebarRef} className="w-[280px] flex-shrink-0 flex flex-col bg-bg-sidebar border-r border-border-subtle transition-colors duration-200">
       <div className="px-3 pt-3 pb-2">
         <button
-          onClick={handleChooseFolder}
+          onClick={openFolderViaDialog}
           style={{
             backgroundColor: '#676386',
             color: '#ffffff'

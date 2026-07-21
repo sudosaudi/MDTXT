@@ -1,16 +1,9 @@
 import React from 'react'
 import { FolderOpen, FileText, AlignLeft } from 'lucide-react'
-import { useApp } from '../context/AppContext'
+import { useFiles } from '../context/FilesContext'
 
 export default function EmptyState({ message, icon }) {
-  const { rootFolderPath, files, setRootFolderPath } = useApp()
-
-  const handleChooseFolder = async () => {
-    const result = await window.electronAPI.chooseFolder()
-    if (!result.canceled && result.filePaths.length > 0) {
-      setRootFolderPath(result.filePaths[0])
-    }
-  }
+  const { rootFolderPath, files, openFolderViaDialog } = useFiles()
 
   let showMessage = message
   let IconComponent = FolderOpen
@@ -33,7 +26,7 @@ export default function EmptyState({ message, icon }) {
         <p className="text-text-secondary text-base">{showMessage}</p>
         {!rootFolderPath && (
           <button
-            onClick={handleChooseFolder}
+            onClick={openFolderViaDialog}
             className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-md text-text-secondary hover:text-text-primary hover:bg-accent-soft text-sm transition-all duration-150"
           >
             <FolderOpen size={14} />

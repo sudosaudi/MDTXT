@@ -1,12 +1,14 @@
 import React, { useState, useRef, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FolderOpen } from 'lucide-react'
-import { useApp } from '../context/AppContext'
+import { useFiles } from '../context/FilesContext'
+import { useUI } from '../context/UIContext'
 
 export default function DropZone({ children }) {
   const [isDragging, setIsDragging] = useState(false)
   const dragCounter = useRef(0)
-  const { setRootFolderPath, pendingFileRef } = useApp()
+  const { setRootFolderPath, pendingFileRef } = useFiles()
+  const { showToast } = useUI()
 
   const handleDragEnter = useCallback((e) => {
     e.preventDefault()
@@ -41,11 +43,27 @@ export default function DropZone({ children }) {
     const files = e.dataTransfer.files
     if (!files || files.length === 0) return
 
+    // Note: File.path is removed in Electron 32+ — use webUtils.getPathForFile
+    // in the preload when upgrading Electron past 31.
     const droppedPath = files[0].path
     if (!droppedPath) return
 
-    const result = await window.electronAPI.scanFolder(droppedPath)
-    if (result.error) {
+    // Ask the main process what was dropped instead of probing with a full
+    // folder scan (which used to scan every dropped folder twice).
+    const stat = await window.electronAPI.statPath(droppedPath)
+
+    if (stat.isDirectory) {
+      setRootFolderPath(droppedPath)
+      return
+    }
+
+    if (stat.isFile) {
+      const dotIndex = droppedPath.lastIndexOf('.')
+      const ext = dotIndex >= 0 ? droppedPath.slice(dotIndex).toLowerCase() : ''
+      if (ext !== '.md' && ext !== '.txt') {
+        showToast('Only .md and .txt files are supported')
+        return
+      }
       const sep = droppedPath.includes('\\') ? '\\' : '/'
       const parts = droppedPath.split(sep)
       parts.pop()
@@ -54,10 +72,11 @@ export default function DropZone({ children }) {
         pendingFileRef.current = droppedPath
         setRootFolderPath(parentDir)
       }
-    } else {
-      setRootFolderPath(droppedPath)
+      return
     }
-  }, [setRootFolderPath, pendingFileRef])
+
+    showToast('Could not open that', 'error')
+  }, [setRootFolderPath, pendingFileRef, showToast])
 
   return (
     <div

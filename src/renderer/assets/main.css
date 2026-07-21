@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import 'highlight.js/styles/github-dark.css';
 
 @tailwind base;
@@ -131,17 +132,11 @@ html, body, button, input, select, textarea {
   -webkit-backdrop-filter: blur(20px);
 }
 
-.mdt-highlight {
-  background: var(--highlight-bg);
+/* Highlights are painted via the CSS Custom Highlight API (see
+   HighlightableViewer.jsx) — no <mark> elements are injected into the DOM. */
+::highlight(mdt-highlight) {
+  background-color: var(--highlight-bg);
   color: inherit;
-  border-radius: 2px;
-  padding: 0 1px;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.mdt-highlight:hover {
-  background: var(--highlight-bg-hover);
 }
 
 .mdt-prose {
@@ -189,7 +184,9 @@ html, body, button, input, select, textarea {
   text-decoration-color: var(--accent);
 }
 
-.theme-light .mdt-prose code:not(pre code) {
+/* Inline code (block code lives inside <pre> and is themed separately).
+   Applies to both themes — colors come from theme variables. */
+.mdt-prose code:not(pre code) {
   background: var(--code-inline-bg);
   color: var(--text-primary);
   border-radius: 3px;
@@ -218,5 +215,65 @@ html, body, button, input, select, textarea {
 
 .theme-light .mdt-prose strong {
   color: var(--text-primary);
+  font-weight: 600;
+}
+
+
+/* Light theme syntax highlighting. github-dark.css is imported as the
+   default (dark) palette; these overrides give light mode a matching
+   GitHub-light palette instead of dark colors on a light background. */
+.theme-light .hljs {
+  color: #24292e;
+  background: transparent;
+}
+.theme-light .hljs-keyword,
+.theme-light .hljs-selector-tag,
+.theme-light .hljs-built_in {
+  color: #d73a49;
+}
+.theme-light .hljs-string,
+.theme-light .hljs-attr {
+  color: #032f62;
+}
+.theme-light .hljs-comment,
+.theme-light .hljs-quote {
+  color: #6a737d;
+  font-style: italic;
+}
+.theme-light .hljs-number,
+.theme-light .hljs-literal {
+  color: #005cc5;
+}
+.theme-light .hljs-function .hljs-title,
+.theme-light .hljs-title.function_ {
+  color: #6f42c1;
+}
+.theme-light .hljs-type,
+.theme-light .hljs-class .hljs-title,
+.theme-light .hljs-name,
+.theme-light .hljs-selector-id,
+.theme-light .hljs-selector-class {
+  color: #6f42c1;
+}
+.theme-light .hljs-meta,
+.theme-light .hljs-bullet {
+  color: #005cc5;
+}
+.theme-light .hljs-variable,
+.theme-light .hljs-template-variable {
+  color: #e36209;
+}
+.theme-light .hljs-addition {
+  color: #22863a;
+  background: #f0fff4;
+}
+.theme-light .hljs-deletion {
+  color: #b31d28;
+  background: #ffeef0;
+}
+.theme-light .hljs-emphasis {
+  font-style: italic;
+}
+.theme-light .hljs-strong {
   font-weight: 600;
 }

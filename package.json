@@ -1,9 +1,9 @@
 {
   "name": "mdtxt",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Minimalist Desktop File Browser - Browse and preview .md and .txt files",
   "main": "./out/main/index.js",
-  "homepage": "https://github.com/sudosaudi/mdtxt",
+  "homepage": "https://github.com/sudosaudi/MDTXT",
   "author": {
     "name": "sudosaudi",
     "email": "sudosaudi@users.noreply.github.com"
@@ -13,7 +13,8 @@
     "build": "electron-vite build",
     "build:linux": "electron-vite build && electron-builder --linux",
     "build:win": "electron-vite build && electron-builder --win",
-    "preview": "electron-vite preview"
+    "preview": "electron-vite preview",
+    "test": "vitest run"
   },
   "keywords": [
     "electron",
@@ -33,9 +34,9 @@
     "electron": "^30.0.1",
     "electron-builder": "^24.13.3",
     "electron-vite": "^2.1.0",
-    "pngjs": "^7.0.0",
     "postcss": "^8.5.14",
-    "vite": "^5.2.0"
+    "vite": "^5.2.0",
+    "vitest": "^4.1.10"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "^4.61.0"
@@ -47,11 +48,13 @@
     "highlight.js": "^11.9.0",
     "lucide-react": "^0.378.0",
     "marked": "^18.0.5",
+    "marked-highlight": "^2.2.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^9.0.1",
     "rehype-highlight": "^7.0.0",
     "remark-gfm": "^4.0.0",
+    "sanitize-html": "2.14.0",
     "tailwindcss": "^3.4.3"
   },
   "build": {

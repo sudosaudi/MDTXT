@@ -33,7 +33,7 @@ MDTXT is a frameless desktop application built with Electron and React. Open any
 > **Always download the latest version directly from the official GitHub releases page:**
 > **[github.com/sudosaudi/MDTXT/releases/latest](https://github.com/sudosaudi/MDTXT/releases/latest)**
 >
-> Do not install MDTXT from any other source. Each release on that page ships pre-built, signed installers for Linux and Windows.
+> Do not install MDTXT from any other source. Each release on that page ships pre-built installers for Linux and Windows.
 
 ### Linux
 
@@ -76,7 +76,13 @@ npm install
 npm run dev
 ```
 
-> **Note:** On Linux systems where `chrome-sandbox` is not SUID root, you may need to run with `--no-sandbox`. The built app handles this automatically via the post-install script.
+> **Note (Chromium sandbox):** MDTXT enables the Chromium sandbox whenever the system supports it (unprivileged user namespaces, or a SUID-root `chrome-sandbox` helper — set up automatically by the `.deb` post-install script). If neither is available it logs a warning and falls back to `--no-sandbox` instead of crashing.
+
+Run the unit tests:
+
+```bash
+npm test
+```
 
 ## Building
 
@@ -111,7 +117,7 @@ src/
     │   ├── PreviewPane.jsx          File content viewer (delegates to MD or TXT) with word count status bar
     │   ├── MarkdownRenderer.jsx     react-markdown with remark-gfm + rehype-highlight
     │   ├── PlainTextViewer.jsx      Monospace text display with line numbers
-    │   ├── HighlightableViewer.jsx  DOM-text-walking overlay that applies <mark> tags
+    │   ├── HighlightableViewer.jsx  Highlights painted via the CSS Custom Highlight API (no DOM mutation)
     │   ├── HighlightToolbar.jsx     Floating add/remove highlight button
     │   ├── TitleBar.jsx             Frameless window title bar with font size controls and PDF export
     │   ├── EmptyState.jsx           Prompt shown when no folder is open
@@ -122,7 +128,7 @@ src/
     └── assets/
         └── main.css                 Theme tokens, Tailwind directives, custom styles
 scripts/
-└── afterInstall.sh    Post-install script for .deb — patches --no-sandbox into desktop entry
+└── afterInstall.sh    Post-install script for .deb — SUID chrome-sandbox helper + legacy cleanup
 ```
 
 ### IPC Channels
@@ -132,6 +138,7 @@ The main and renderer processes communicate through these IPC channels:
 | Channel | Direction | Description |
 |---|---|---|
 | `dialog:openFolder` | Renderer → Main | Opens a native folder picker dialog |
+| `fs:stat` | Renderer → Main | Returns whether a path is a file or directory (drag-and-drop probe) |
 | `fs:scanFolder` | Renderer → Main | Recursively scans a directory for `.md`/`.txt` files |
 | `fs:readFile` | Renderer → Main | Reads a file's contents from disk |
 | `window:minimize` | Renderer → Main | Minimizes the window |
@@ -142,8 +149,6 @@ The main and renderer processes communicate through these IPC channels:
 | `store:getRecentFolders` | Renderer → Main | Returns the list of recently opened folders (max 5) |
 | `store:addRecentFolder` | Renderer → Main | Adds a folder to the top of the recent folders list |
 | `store:clearRecentFolders` | Renderer → Main | Empties the recent folders list |
-| `store:getLastOpenedFolder` | Renderer → Main | Returns the last opened folder path |
-| `store:setLastOpenedFolder` | Renderer → Main | Persists the last opened folder path |
 | `store:getTheme` | Renderer → Main | Returns the saved theme preference (`light`, `dark`, or `null` for system) |
 | `store:setTheme` | Renderer → Main | Persists the user's theme override |
 | `file:exportPdf` | Renderer → Main | Exports the current file to a styled A4 PDF via a native save dialog |
@@ -156,7 +161,8 @@ The main and renderer processes communicate through these IPC channels:
 - **electron-vite** — Vite-powered build tooling for Electron
 - **electron-builder** — packaging and distribution
 - **react-markdown + remark-gfm** — Markdown parsing and rendering
-- **marked** — Markdown-to-HTML conversion for PDF export
+- **marked + marked-highlight** — Markdown-to-HTML conversion with syntax highlighting for PDF export
+- **sanitize-html** — strips raw HTML from exported PDF documents
 - **rehype-highlight + highlight.js** — code block syntax highlighting
 - **Source Serif 4** — primary typography
 - **JetBrains Mono** — code and `.txt` viewer typography

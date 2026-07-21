@@ -2,10 +2,10 @@ import React from 'react'
 import Sidebar from './Sidebar'
 import PreviewPane from './PreviewPane'
 import EmptyState from './EmptyState'
-import { useApp } from '../context/AppContext'
+import { useFiles } from '../context/FilesContext'
 
 export default function MainLayout() {
-  const { files, selectedFile } = useApp()
+  const { files } = useFiles()
 
   if (files.length === 0) {
     return (

@@ -1,9 +1,11 @@
 import React from 'react'
 import { Plus, Minus, Square, X, FileDown } from 'lucide-react'
-import { useApp } from '../context/AppContext'
+import { useUI } from '../context/UIContext'
+import { useFiles } from '../context/FilesContext'
 
 export default function TitleBar() {
-  const { zoomLevel, setZoomLevel, rootFolderPath, selectedFile, exportPdf } = useApp()
+  const { zoomLevel, setZoomLevel, exportPdf } = useUI()
+  const { rootFolderPath, selectedFile } = useFiles()
 
   const handleZoomIn = () => {
     setZoomLevel(Math.min(zoomLevel + 10, 200))

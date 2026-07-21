@@ -1,27 +1,19 @@
-import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
+import React, { useLayoutEffect, useRef, useState, useCallback } from 'react'
 import HighlightToolbar from './HighlightToolbar'
-import { useApp } from '../context/AppContext'
+import { useHighlights } from '../context/HighlightsContext'
+import { useUI } from '../context/UIContext'
 
+// Highlights are painted with the CSS Custom Highlight API (Chromium 105+,
+// Electron 30 ships Chromium 124) instead of wrapping DOM nodes in <mark>
+// elements. Ranges never touch React's DOM, so re-renders can't conflict
+// with injected elements, and "re-applying" is just a cheap recompute.
 const PREFIX_LEN = 24
 const SUFFIX_LEN = 24
-const MARK_CLASS = 'mdt-highlight'
-const MARK_SELECTOR = 'mark.' + MARK_CLASS
+const HL_NAME = 'mdt-highlight'
+const HL_SUPPORTED = typeof CSS !== 'undefined' && 'highlights' in CSS && typeof Highlight !== 'undefined'
 
 function generateId() {
   return 'h_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
-}
-
-function stripExistingHighlights(root) {
-  const marks = root.querySelectorAll(MARK_SELECTOR)
-  marks.forEach(mark => {
-    const parent = mark.parentNode
-    if (!parent) return
-    while (mark.firstChild) {
-      parent.insertBefore(mark.firstChild, mark)
-    }
-    parent.removeChild(mark)
-  })
-  root.normalize()
 }
 
 function collectTextNodes(root) {
@@ -30,7 +22,7 @@ function collectTextNodes(root) {
       let p = node.parentNode
       while (p && p !== root) {
         const tag = p.nodeName
-        if (tag === 'SCRIPT' || tag === 'STYLE' || (tag === 'MARK' && p.classList && p.classList.contains(MARK_CLASS))) {
+        if (tag === 'SCRIPT' || tag === 'STYLE') {
           return NodeFilter.FILTER_REJECT
         }
         p = p.parentNode
@@ -44,10 +36,11 @@ function collectTextNodes(root) {
   return nodes
 }
 
-function applyHighlightToRange(root, h) {
+// Flattens the subtree into one string plus, per text node, its absolute
+// [start, end) span in that string. All anchor math happens on these plain
+// integer offsets — no fragile DOM range comparisons.
+function buildTextIndex(root) {
   const textNodes = collectTextNodes(root)
-  if (textNodes.length === 0) return false
-
   let fullText = ''
   const nodeRanges = []
   for (const n of textNodes) {
@@ -55,45 +48,33 @@ function applyHighlightToRange(root, h) {
     fullText += n.nodeValue
     nodeRanges.push({ node: n, start, end: fullText.length })
   }
+  return { fullText, nodeRanges }
+}
 
-  const needle = h.prefix + h.text + h.suffix
-  const idx = fullText.indexOf(needle)
-  if (idx === -1) return false
-
-  const matchStart = idx + h.prefix.length
-  const matchEnd = matchStart + h.text.length
-
-  let first = null
-  let last = null
+function locateOffset(nodeRanges, abs) {
   for (const r of nodeRanges) {
-    if (r.end <= matchStart) continue
-    if (r.start >= matchEnd) break
-    if (!first) first = r
-    last = r
-  }
-  if (!first || !last) return false
-
-  const range = document.createRange()
-  range.setStart(first.node, Math.max(0, matchStart - first.start))
-  range.setEnd(last.node, Math.min(last.node.nodeValue.length, matchEnd - last.start))
-
-  const mark = document.createElement('mark')
-  mark.className = MARK_CLASS
-  mark.setAttribute('data-id', h.id)
-
-  try {
-    range.surroundContents(mark)
-    return true
-  } catch (e) {
-    try {
-      const fragment = range.extractContents()
-      mark.appendChild(fragment)
-      range.insertNode(mark)
-      return true
-    } catch (e2) {
-      return false
+    if (abs >= r.start && abs <= r.end) {
+      return { node: r.node, offset: abs - r.start }
     }
   }
+  return null
+}
+
+// Locates a stored highlight by its prefix+text+suffix anchor.
+// Returns absolute { start, end } or null when the anchor is gone
+// (e.g. the file was edited elsewhere).
+function findAnchor(index, h) {
+  const needle = h.prefix + h.text + h.suffix
+  const idx = index.fullText.indexOf(needle)
+  if (idx === -1) return null
+  return { start: idx + h.prefix.length, end: idx + h.prefix.length + h.text.length }
+}
+
+function rangeToAbsolute(index, range) {
+  const startNr = index.nodeRanges.find(r => r.node === range.startContainer)
+  const endNr = index.nodeRanges.find(r => r.node === range.endContainer)
+  if (!startNr || !endNr) return null
+  return { start: startNr.start + range.startOffset, end: endNr.start + range.endOffset }
 }
 
 function getBlockAncestor(node, root) {
@@ -114,78 +95,76 @@ function getBlockAncestor(node, root) {
   return root
 }
 
-function getSurroundingText(node, offset, root, maxLen) {
-  if (!node || maxLen === 0) return ''
-  const text = node.nodeType === Node.TEXT_NODE ? node.nodeValue : ''
-  let result = ''
-  if (maxLen < 0) {
-    result = text.substring(0, offset)
-    let n = node
-    while (result.length < -maxLen) {
-      n = getPreviousTextNode(n, root)
-      if (!n) break
-      result = n.nodeValue + result
-    }
-    return result.slice(Math.max(0, result.length + maxLen))
-  } else {
-    result = text.substring(offset)
-    let n = node
-    while (result.length < maxLen) {
-      n = getNextTextNode(n, root)
-      if (!n) break
-      result = result + n.nodeValue
-    }
-    return result.slice(0, maxLen)
-  }
-}
-
-function getPreviousTextNode(node, root) {
-  let n = node
-  while (n && n !== root) {
-    if (n.previousSibling) {
-      n = n.previousSibling
-      while (n.lastChild) n = n.lastChild
-      if (n.nodeType === Node.TEXT_NODE && n.nodeValue.length > 0) return n
-    } else {
-      n = n.parentNode
-    }
-  }
-  return null
-}
-
-function getNextTextNode(node, root) {
-  let n = node
-  while (n && n !== root) {
-    if (n.nextSibling) {
-      n = n.nextSibling
-      while (n.firstChild) n = n.firstChild
-      if (n.nodeType === Node.TEXT_NODE && n.nodeValue.length > 0) return n
-    } else {
-      n = n.parentNode
-    }
-  }
-  return null
-}
 
 export default function HighlightableViewer({ filePath, scopeRef, children }) {
   const wrapperRef = useRef(null)
   const toolbarRef = useRef(null)
-  const { highlights, setHighlights, persistHighlights, showToast } = useApp()
+  const spansRef = useRef([])
+  const { highlights, setHighlights, persistHighlights } = useHighlights()
+  const { showToast } = useUI()
   const [toolbar, setToolbar] = useState(null)
 
   const fileHighlights = filePath ? (highlights[filePath] || []) : []
 
+  const getRoot = useCallback(() => {
+    return (scopeRef && scopeRef.current) || wrapperRef.current
+  }, [scopeRef])
+
+  // (Re)compute highlight ranges and hand them to the browser's highlight
+  // registry. No DOM mutation: React stays the sole owner of the tree.
   useLayoutEffect(() => {
-    if (!wrapperRef.current) return
-    const root = scopeRef && scopeRef.current ? scopeRef.current : wrapperRef.current
-    try {
-      stripExistingHighlights(root)
-      for (const h of fileHighlights) {
-        applyHighlightToRange(root, h)
+    spansRef.current = []
+    if (!HL_SUPPORTED) return
+    const root = getRoot()
+    if (!root) return
+
+    const registry = CSS.highlights
+    registry.delete(HL_NAME)
+
+    const index = buildTextIndex(root)
+    const ranges = []
+    const spans = []
+    for (const h of fileHighlights) {
+      const abs = findAnchor(index, h)
+      if (!abs) continue // anchor lost (content changed) — keep it stored, just don't paint
+      const s = locateOffset(index.nodeRanges, abs.start)
+      const e = locateOffset(index.nodeRanges, abs.end)
+      if (!s || !e) continue
+      const range = document.createRange()
+      try {
+        range.setStart(s.node, s.offset)
+        range.setEnd(e.node, e.offset)
+      } catch (err) {
+        continue
       }
-    } catch (e) {
+      ranges.push(range)
+      spans.push({ id: h.id, range })
     }
-  }, [children, fileHighlights, scopeRef])
+    if (ranges.length > 0) {
+      registry.set(HL_NAME, new Highlight(...ranges))
+    }
+    spansRef.current = spans
+
+    return () => registry.delete(HL_NAME)
+  }, [children, fileHighlights, getRoot])
+
+  // Hit-tests a viewport point against the active highlight ranges.
+  const hitTest = useCallback((x, y) => {
+    const spans = spansRef.current
+    if (!spans || spans.length === 0 || !document.caretRangeFromPoint) return null
+    const point = document.caretRangeFromPoint(x, y)
+    if (!point) return null
+    for (const span of spans) {
+      try {
+        if (span.range.isPointInRange(point.startContainer, point.startOffset)) {
+          return span
+        }
+      } catch (err) {
+        // stale range (content changed under us) — ignore
+      }
+    }
+    return null
+  }, [])
 
   const handleMouseUp = useCallback(() => {
     setTimeout(() => {
@@ -193,18 +172,23 @@ export default function HighlightableViewer({ filePath, scopeRef, children }) {
       const selection = window.getSelection()
       if (!selection || selection.rangeCount === 0) return
       const range = selection.getRangeAt(0)
-      const text = selection.toString().trim()
+      const rawText = selection.toString()
 
-      if (!text) return
+      if (!rawText.trim()) return
       if (!wrapperRef.current.contains(range.commonAncestorContainer)) return
 
-      let n = range.commonAncestorContainer
-      while (n && n !== wrapperRef.current) {
-        if (n.nodeType === Node.ELEMENT_NODE && n.nodeName === 'MARK' && n.classList && n.classList.contains(MARK_CLASS)) {
-          return
-        }
-        n = n.parentNode
-      }
+      const root = getRoot()
+      const index = buildTextIndex(root)
+      const selAbs = rangeToAbsolute(index, range)
+      if (!selAbs) return
+
+      // Trim the selection in flat-text space so prefix/text/suffix always
+      // match what findAnchor will look for later.
+      const leadWs = rawText.length - rawText.trimStart().length
+      const trailWs = rawText.length - rawText.trimEnd().length
+      selAbs.start += leadWs
+      selAbs.end -= trailWs
+      if (selAbs.end <= selAbs.start) return
 
       const startBlock = getBlockAncestor(range.startContainer, wrapperRef.current)
       const endBlock = getBlockAncestor(range.endContainer, wrapperRef.current)
@@ -213,8 +197,16 @@ export default function HighlightableViewer({ filePath, scopeRef, children }) {
         return
       }
 
-      const prefix = getSurroundingText(range.startContainer, range.startOffset, wrapperRef.current, -PREFIX_LEN)
-      const suffix = getSurroundingText(range.endContainer, range.endOffset, wrapperRef.current, SUFFIX_LEN)
+      // Overlapping an existing highlight → let the click handler offer
+      // removal instead of stacking a new highlight on top.
+      for (const h of fileHighlights) {
+        const abs = findAnchor(index, h)
+        if (abs && selAbs.start < abs.end && abs.start < selAbs.end) return
+      }
+
+      const text = index.fullText.slice(selAbs.start, selAbs.end)
+      const prefix = index.fullText.slice(Math.max(0, selAbs.start - PREFIX_LEN), selAbs.start)
+      const suffix = index.fullText.slice(selAbs.end, selAbs.end + SUFFIX_LEN)
 
       const rect = range.getBoundingClientRect()
       setToolbar({
@@ -226,25 +218,22 @@ export default function HighlightableViewer({ filePath, scopeRef, children }) {
         suffix
       })
     }, 10)
-  }, [showToast])
+  }, [showToast, getRoot, fileHighlights])
 
   const handleClick = useCallback((e) => {
-    const target = e.target
-    if (!target || !target.closest) return
-    const mark = target.closest(MARK_SELECTOR)
-    if (mark) {
-      const id = mark.getAttribute('data-id')
-      const rect = mark.getBoundingClientRect()
+    const span = hitTest(e.clientX, e.clientY)
+    if (span) {
+      const rect = span.range.getBoundingClientRect()
       setToolbar({
         mode: 'remove',
         x: rect.left + rect.width / 2,
         y: rect.top,
-        id
+        id: span.id
       })
     }
-  }, [])
+  }, [hitTest])
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!toolbar) return
     const handleKey = (e) => {
       if (e.key === 'Escape') {
@@ -255,7 +244,7 @@ export default function HighlightableViewer({ filePath, scopeRef, children }) {
     const handleMouseDown = (e) => {
       const t = e.target
       if (toolbarRef.current && toolbarRef.current.contains(t)) return
-      if (t && t.closest && t.closest(MARK_SELECTOR)) return
+      if (hitTest(e.clientX, e.clientY)) return
       setToolbar(null)
     }
     window.addEventListener('keydown', handleKey)
@@ -264,7 +253,7 @@ export default function HighlightableViewer({ filePath, scopeRef, children }) {
       window.removeEventListener('keydown', handleKey)
       document.removeEventListener('mousedown', handleMouseDown)
     }
-  }, [toolbar])
+  }, [toolbar, hitTest])
 
   const handleAdd = useCallback(() => {
     if (!toolbar || toolbar.mode !== 'add' || !filePath) return

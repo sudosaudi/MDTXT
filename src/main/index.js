@@ -1,96 +1,123 @@
+import { sanitizeErrorMessage, isPathInsideRoot, hasAllowedExtension, isImageFile } from './utils.js'
+
 const { app, BrowserWindow, ipcMain, dialog, protocol, net } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const fsp = require('fs/promises')
 const { pathToFileURL } = require('url')
 const { autoUpdater } = require('electron-updater')
 const hljs = require('highlight.js')
+const sanitizeHtml = require('sanitize-html')
 
-app.commandLine.appendSwitch('no-sandbox')
+// Enable the Chromium sandbox whenever the platform can actually support it,
+// and only then. Requesting the sandbox when the kernel/helper cannot provide
+// it makes Electron abort on startup (this is why --no-sandbox was previously
+// forced globally). Order of preference on Linux:
+//   1. unprivileged user namespaces (and not AppArmor-restricted, e.g. Ubuntu 24.04)
+//   2. SUID-root chrome-sandbox helper next to the executable
+// Otherwise degrade gracefully to --no-sandbox with a warning.
+function canEnableSandbox() {
+  if (process.platform !== 'linux') return true
+  try {
+    const usernsPath = '/proc/sys/kernel/unprivileged_userns_clone'
+    const usernsOk = !fs.existsSync(usernsPath) || fs.readFileSync(usernsPath, 'utf8').trim() === '1'
+    const aaPath = '/proc/sys/kernel/apparmor_restrict_unprivileged_userns'
+    const aaRestricted = fs.existsSync(aaPath) && fs.readFileSync(aaPath, 'utf8').trim() === '1'
+    if (usernsOk && !aaRestricted) return true
+  } catch (e) {
+    // fall through to the SUID helper check
+  }
+  try {
+    const helper = path.join(path.dirname(process.execPath), 'chrome-sandbox')
+    const st = fs.statSync(helper)
+    return st.uid === 0 && (st.mode & 0o4000) !== 0
+  } catch (e) {
+    return false
+  }
+}
+
+const SANDBOX_ENABLED = canEnableSandbox()
+if (!SANDBOX_ENABLED) {
+  console.warn('[mdtxt] Chromium sandbox unavailable on this system; falling back to --no-sandbox')
+  app.commandLine.appendSwitch('no-sandbox')
+}
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024
 const MAX_SCAN_DEPTH = 10
+const MAX_FILES = 5000
 const SCAN_IGNORE_DIRS = new Set(['.git', 'node_modules', '.svn', '.hg', '.cache'])
+const MAX_HIGHLIGHTS_PER_FILE = 10000
+const MAX_RECENT_FOLDERS = 5
 
 let mainWindow = null
 let currentRootPath = null
+let currentRootReal = null
+
+// Sets the security root used to scope all file access. Also caches the
+// canonical (symlink-resolved) path so checks can defeat symlink escapes.
+function setSecurityRoot(folderPath) {
+  currentRootPath = folderPath ? path.resolve(folderPath) : null
+  try {
+    currentRootReal = currentRootPath ? fs.realpathSync(currentRootPath) : null
+  } catch (e) {
+    currentRootReal = currentRootPath
+  }
+}
+
+// Symlink-safe containment check: resolves the target to its real path before
+// comparing against the real root. Requires the target to exist on disk.
+function isPathInsideRootReal(targetPath) {
+  if (!currentRootReal || typeof targetPath !== 'string' || !targetPath) return false
+  try {
+    return isPathInsideRoot(fs.realpathSync(targetPath), currentRootReal)
+  } catch (e) {
+    return false
+  }
+}
 
 function getHighlightsFile() {
   return path.join(app.getPath('userData'), 'highlights.json')
 }
 
-function readHighlightsStore() {
-  try {
-    const file = getHighlightsFile()
-    if (!fs.existsSync(file)) return {}
-    const raw = fs.readFileSync(file, 'utf-8')
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed : {}
-  } catch (e) {
-    return {}
-  }
-}
-
-function writeHighlightsStore(store) {
-  try {
-    const file = getHighlightsFile()
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, JSON.stringify(store, null, 2), 'utf-8')
-    return true
-  } catch (e) {
-    return false
-  }
-}
-
-const MAX_RECENT_FOLDERS = 5
-
 function getStateFile() {
   return path.join(app.getPath('userData'), 'app-state.json')
 }
 
-function readState() {
+async function readJsonFile(file, fallback) {
   try {
-    const file = getStateFile()
-    if (!fs.existsSync(file)) return { recentFolders: [], lastOpenedFolder: null, theme: null }
-    const raw = fs.readFileSync(file, 'utf-8')
+    const raw = await fsp.readFile(file, 'utf-8')
     const parsed = JSON.parse(raw)
-    return {
-      recentFolders: Array.isArray(parsed.recentFolders) ? parsed.recentFolders : [],
-      lastOpenedFolder: typeof parsed.lastOpenedFolder === 'string' ? parsed.lastOpenedFolder : null,
-      theme: parsed.theme === 'light' || parsed.theme === 'dark' ? parsed.theme : null
-    }
+    return parsed && typeof parsed === 'object' ? parsed : fallback
   } catch (e) {
-    return { recentFolders: [], lastOpenedFolder: null, theme: null }
+    return fallback
   }
 }
 
-function writeState(state) {
-  try {
-    const file = getStateFile()
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, JSON.stringify(state, null, 2), 'utf-8')
-    return true
-  } catch (e) {
-    return false
+// All JSON store writes go through a single promise chain and are atomic
+// (temp file + rename), so a crash mid-write can never corrupt a store.
+let writeChain = Promise.resolve()
+function writeJsonAtomic(file, data) {
+  writeChain = writeChain.then(async () => {
+    const tmp = file + '.tmp'
+    await fsp.mkdir(path.dirname(file), { recursive: true })
+    await fsp.writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8')
+    await fsp.rename(tmp, file)
+  }).catch((e) => {
+    console.error('[mdtxt] failed to write store:', file, e && e.message)
+  })
+  return writeChain
+}
+
+async function readHighlightsStore() {
+  return readJsonFile(getHighlightsFile(), {})
+}
+
+async function readState() {
+  const parsed = await readJsonFile(getStateFile(), {})
+  return {
+    recentFolders: Array.isArray(parsed.recentFolders) ? parsed.recentFolders : [],
+    theme: parsed.theme === 'light' || parsed.theme === 'dark' ? parsed.theme : null
   }
-}
-
-function sanitizeErrorMessage(err) {
-  if (!err || typeof err.message !== 'string') return 'operation failed'
-  return err.message.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 200)
-}
-
-function isPathInsideRoot(targetPath, rootPath) {
-  if (!rootPath || !targetPath) return false
-  const resolvedRoot = path.resolve(rootPath)
-  const resolvedTarget = path.resolve(targetPath)
-  if (resolvedTarget === resolvedRoot) return true
-  const rel = path.relative(resolvedRoot, resolvedTarget)
-  return rel && !rel.startsWith('..') && !path.isAbsolute(rel)
-}
-
-function hasAllowedExtension(filePath) {
-  const ext = path.extname(filePath).toLowerCase()
-  return ext === '.md' || ext === '.txt'
 }
 
 function createWindow() {
@@ -106,7 +133,7 @@ function createWindow() {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
+      sandbox: SANDBOX_ENABLED,
       webSecurity: true
     }
   })
@@ -125,6 +152,10 @@ function createWindow() {
 
 function setupAutoUpdater() {
   if (!app.isPackaged) return
+  // electron-updater can only self-update AppImage builds on Linux. .deb
+  // installs must update through the package manager / releases page, so
+  // don't show update UI that would only fail at quitAndInstall time.
+  if (process.platform === 'linux' && !process.env.APPIMAGE) return
 
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
@@ -149,7 +180,7 @@ function setupAutoUpdater() {
     console.error('Auto-update error:', err && err.message ? err.message : err)
     if (mainWindow) {
       mainWindow.webContents.send('update:error', {
-        message: err && err.message ? err.message : String(err)
+        message: sanitizeErrorMessage(err)
       })
     }
   })
@@ -164,7 +195,7 @@ app.whenReady().then(() => {
     try {
       const rawPath = request.url.replace('local-files://', '')
       const filePath = decodeURIComponent(rawPath)
-      if (!isPathInsideRoot(filePath, currentRootPath)) {
+      if (!isPathInsideRootReal(filePath)) {
         return new Response('forbidden', { status: 403 })
       }
       if (!hasAllowedExtension(filePath) && !isImageFile(filePath)) {
@@ -180,17 +211,61 @@ app.whenReady().then(() => {
   createWindow()
   setupAutoUpdater()
 
+  // Headless smoke test hook (used by CI / manual verification):
+  // MDTXT_SMOKE_TEST=1 electron . — boots the real app, verifies the
+  // renderer came up with the preload bridge intact, prints the sandbox
+  // decision, and exits.
+  if (process.env.MDTXT_SMOKE_TEST === '1') {
+    setTimeout(async () => {
+      try {
+        const js = (expr) => mainWindow.webContents.executeJavaScript(expr)
+        const apiOk = await js('Boolean(window.electronAPI)')
+        console.log(`[smoke] sandboxEnabled=${SANDBOX_ENABLED} preloadApi=${apiOk} windows=${BrowserWindow.getAllWindows().length}`)
+
+        // Optional end-to-end IPC pass against a prepared folder
+        // (MDTXT_SMOKE_FOLDER=/path/to/notes).
+        const folder = process.env.MDTXT_SMOKE_FOLDER
+        if (folder) {
+          const q = JSON.stringify
+          const scan = await js(`window.electronAPI.scanFolder(${q(folder)})`)
+          console.log(`[smoke] scan files=${scan.files ? scan.files.length : -1} error=${scan.error || 'none'}`)
+
+          const notePath = path.join(folder, 'note.md')
+          const read = await js(`window.electronAPI.readFile(${q(notePath)})`)
+          console.log(`[smoke] readFile bytes=${read.content ? read.content.length : 0} error=${read.error || 'none'}`)
+
+          const evilRead = await js(`window.electronAPI.readFile(${q(path.join(folder, 'evil.md'))})`)
+          console.log(`[smoke] symlinkEscapeBlocked=${evilRead.error ? 'yes' : 'NO!'} (${evilRead.error || 'read succeeded'})`)
+
+          const statDir = await js(`window.electronAPI.statPath(${q(folder)})`)
+          const statFile = await js(`window.electronAPI.statPath(${q(notePath)})`)
+          console.log(`[smoke] stat dir=${statDir.isDirectory} file=${statFile.isFile}`)
+
+          const hl = [{ id: 'smoke1', prefix: '', text: 'smoke', suffix: '', createdAt: 0 }]
+          const saved = await js('window.electronAPI.saveHighlights(' + q(notePath) + ', ' + JSON.stringify(hl) + ')')
+          const loaded = await js('window.electronAPI.loadHighlights(' + q(notePath) + ')')
+          console.log(`[smoke] highlights saved=${saved.ok} loaded=${loaded.length}`)
+          await js('window.electronAPI.saveHighlights(' + q(notePath) + ', [])') // leave no residue
+
+          const theme = await js('window.electronAPI.getTheme()')
+          const themeOk = theme === null || theme === 'light' || theme === 'dark'
+          console.log(`[smoke] themeRead=${themeOk ? 'ok' : 'bad'} (${theme})`)
+        }
+      } catch (e) {
+        console.log('[smoke] FAILED:', e && e.message)
+        app.exit(1)
+        return
+      }
+      app.exit(0)
+    }, 5000)
+  }
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow()
     }
   })
 })
-
-function isImageFile(filePath) {
-  const ext = path.extname(filePath).toLowerCase()
-  return ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico'].includes(ext)
-}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -203,11 +278,25 @@ ipcMain.handle('dialog:openFolder', async () => {
     properties: ['openDirectory']
   })
   if (!result.canceled && result.filePaths[0]) {
-    currentRootPath = path.resolve(result.filePaths[0])
-  } else {
-    currentRootPath = null
+    setSecurityRoot(result.filePaths[0])
   }
+  // Cancelling the dialog intentionally leaves the current security root
+  // untouched, so the currently open folder keeps working.
   return result
+})
+
+// Lightweight stat probe used by the renderer (e.g. drag-and-drop) to tell
+// files from folders without triggering a full recursive scan.
+ipcMain.handle('fs:stat', async (_event, targetPath) => {
+  try {
+    if (typeof targetPath !== 'string' || !targetPath) {
+      return { error: 'invalid path' }
+    }
+    const st = await fsp.stat(targetPath)
+    return { isDirectory: st.isDirectory(), isFile: st.isFile() }
+  } catch (e) {
+    return { error: 'not found' }
+  }
 })
 
 ipcMain.handle('fs:scanFolder', async (event, folderPath) => {
@@ -216,27 +305,28 @@ ipcMain.handle('fs:scanFolder', async (event, folderPath) => {
       return { error: 'invalid path' }
     }
     const resolvedRoot = path.resolve(folderPath)
-    let stat
+    let rootStat
     try {
-      stat = fs.statSync(resolvedRoot)
+      rootStat = await fsp.stat(resolvedRoot)
     } catch (e) {
       return { error: 'folder not found' }
     }
-    if (!stat.isDirectory()) {
+    if (!rootStat.isDirectory()) {
       return { error: 'not a directory' }
     }
-    currentRootPath = resolvedRoot
+    setSecurityRoot(resolvedRoot)
 
     const files = []
-    const MAX_FILES = 5000
 
-    function scanDir(dirPath, basePath, currentDepth) {
+    // Async all the way down so the main process (and the whole app, window
+    // controls included) stays responsive while large folders are scanned.
+    async function scanDir(dirPath, basePath, currentDepth) {
       if (currentDepth > MAX_SCAN_DEPTH) return
       if (files.length >= MAX_FILES) return
 
       let entries
       try {
-        entries = fs.readdirSync(dirPath, { withFileTypes: true })
+        entries = await fsp.readdir(dirPath, { withFileTypes: true })
       } catch (e) {
         return
       }
@@ -250,14 +340,14 @@ ipcMain.handle('fs:scanFolder', async (event, folderPath) => {
         const fullPath = path.join(dirPath, entry.name)
 
         if (entry.isDirectory()) {
-          scanDir(fullPath, basePath, currentDepth + 1)
+          await scanDir(fullPath, basePath, currentDepth + 1)
         } else if (entry.isFile()) {
           const ext = path.extname(entry.name).toLowerCase()
           if (ext !== '.md' && ext !== '.txt') continue
 
           let stat
           try {
-            stat = fs.statSync(fullPath)
+            stat = await fsp.stat(fullPath)
           } catch (e) {
             continue
           }
@@ -277,7 +367,7 @@ ipcMain.handle('fs:scanFolder', async (event, folderPath) => {
       }
     }
 
-    scanDir(resolvedRoot, resolvedRoot, 0)
+    await scanDir(resolvedRoot, resolvedRoot, 0)
     files.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
     return { files }
   } catch (error) {
@@ -290,20 +380,20 @@ ipcMain.handle('fs:readFile', async (event, filePath) => {
     if (typeof filePath !== 'string' || !filePath) {
       return { error: 'invalid path' }
     }
-    if (!isPathInsideRoot(filePath, currentRootPath)) {
+    if (!isPathInsideRootReal(filePath)) {
       return { error: 'file is outside the open folder' }
     }
     if (!hasAllowedExtension(filePath)) {
       return { error: 'unsupported file type' }
     }
-    const stat = fs.statSync(filePath)
+    const stat = await fsp.stat(filePath)
     if (!stat.isFile()) {
       return { error: 'not a regular file' }
     }
     if (stat.size > MAX_FILE_BYTES) {
       return { error: `file too large (max ${MAX_FILE_BYTES} bytes)` }
     }
-    const content = fs.readFileSync(filePath, 'utf-8')
+    const content = await fsp.readFile(filePath, 'utf-8')
     return { content }
   } catch (error) {
     return { error: sanitizeErrorMessage(error) }
@@ -328,19 +418,19 @@ ipcMain.handle('window:close', () => {
   if (mainWindow) mainWindow.close()
 })
 
-ipcMain.handle('highlights:load', (_event, filePath) => {
+ipcMain.handle('highlights:load', async (_event, filePath) => {
   if (typeof filePath !== 'string' || !filePath) return []
-  if (!isPathInsideRoot(filePath, currentRootPath)) return []
+  if (!isPathInsideRootReal(filePath)) return []
   if (!hasAllowedExtension(filePath)) return []
-  const store = readHighlightsStore()
+  const store = await readHighlightsStore()
   return Array.isArray(store[filePath]) ? store[filePath] : []
 })
 
-ipcMain.handle('highlights:save', (_event, filePath, highlights) => {
+ipcMain.handle('highlights:save', async (_event, filePath, highlights) => {
   if (typeof filePath !== 'string' || !filePath) {
     return { ok: false, error: 'invalid filePath' }
   }
-  if (!isPathInsideRoot(filePath, currentRootPath)) {
+  if (!isPathInsideRootReal(filePath)) {
     return { ok: false, error: 'file is outside the open folder' }
   }
   if (!hasAllowedExtension(filePath)) {
@@ -349,66 +439,53 @@ ipcMain.handle('highlights:save', (_event, filePath, highlights) => {
   if (!Array.isArray(highlights)) {
     return { ok: false, error: 'invalid highlights' }
   }
-  if (highlights.length > 10000) {
+  if (highlights.length > MAX_HIGHLIGHTS_PER_FILE) {
     return { ok: false, error: 'too many highlights' }
   }
-  const store = readHighlightsStore()
+  const store = await readHighlightsStore()
   if (highlights.length === 0) {
     delete store[filePath]
   } else {
     store[filePath] = highlights
   }
-  const ok = writeHighlightsStore(store)
-  return { ok }
+  await writeJsonAtomic(getHighlightsFile(), store)
+  return { ok: true }
 })
 
-ipcMain.handle('store:getRecentFolders', () => {
-  const state = readState()
+ipcMain.handle('store:getRecentFolders', async () => {
+  const state = await readState()
   return state.recentFolders
 })
 
-ipcMain.handle('store:addRecentFolder', (_event, folderPath) => {
+ipcMain.handle('store:addRecentFolder', async (_event, folderPath) => {
   if (typeof folderPath !== 'string' || !folderPath) return []
-  const state = readState()
+  const state = await readState()
   const resolved = path.resolve(folderPath)
   state.recentFolders = state.recentFolders.filter((p) => path.resolve(p) !== resolved)
   state.recentFolders.unshift(resolved)
   if (state.recentFolders.length > MAX_RECENT_FOLDERS) {
     state.recentFolders = state.recentFolders.slice(0, MAX_RECENT_FOLDERS)
   }
-  writeState(state)
+  await writeJsonAtomic(getStateFile(), state)
   return state.recentFolders
 })
 
-ipcMain.handle('store:getLastOpenedFolder', () => {
-  const state = readState()
-  return state.lastOpenedFolder
-})
-
-ipcMain.handle('store:setLastOpenedFolder', (_event, folderPath) => {
-  if (typeof folderPath !== 'string') return { ok: false }
-  const state = readState()
-  state.lastOpenedFolder = folderPath ? path.resolve(folderPath) : null
-  writeState(state)
-  return { ok: true }
-})
-
-ipcMain.handle('store:clearRecentFolders', () => {
-  const state = readState()
+ipcMain.handle('store:clearRecentFolders', async () => {
+  const state = await readState()
   state.recentFolders = []
-  writeState(state)
+  await writeJsonAtomic(getStateFile(), state)
   return state.recentFolders
 })
 
-ipcMain.handle('store:getTheme', () => {
-  const state = readState()
+ipcMain.handle('store:getTheme', async () => {
+  const state = await readState()
   return state.theme
 })
 
-ipcMain.handle('store:setTheme', (_event, theme) => {
-  const state = readState()
+ipcMain.handle('store:setTheme', async (_event, theme) => {
+  const state = await readState()
   state.theme = theme === 'light' || theme === 'dark' ? theme : null
-  writeState(state)
+  await writeJsonAtomic(getStateFile(), state)
   return { ok: true, theme: state.theme }
 })
 
@@ -419,7 +496,7 @@ ipcMain.handle('update:install', () => {
   } catch (e) {
     if (mainWindow) {
       mainWindow.webContents.send('update:error', {
-        message: e && e.message ? e.message : String(e)
+        message: sanitizeErrorMessage(e)
       })
     }
   }
@@ -430,13 +507,13 @@ ipcMain.handle('file:exportPdf', async (event, filePath) => {
     if (typeof filePath !== 'string' || !filePath) {
       return { ok: false, error: 'invalid path' }
     }
-    if (!isPathInsideRoot(filePath, currentRootPath)) {
+    if (!isPathInsideRootReal(filePath)) {
       return { ok: false, error: 'file is outside the open folder' }
     }
     if (!hasAllowedExtension(filePath)) {
       return { ok: false, error: 'unsupported file type' }
     }
-    const stat = fs.statSync(filePath)
+    const stat = await fsp.stat(filePath)
     if (!stat.isFile()) {
       return { ok: false, error: 'not a regular file' }
     }
@@ -444,7 +521,7 @@ ipcMain.handle('file:exportPdf', async (event, filePath) => {
       return { ok: false, error: 'file too large' }
     }
 
-    const content = fs.readFileSync(filePath, 'utf-8')
+    const content = await fsp.readFile(filePath, 'utf-8')
     const ext = path.extname(filePath).toLowerCase()
     const baseName = path.basename(filePath, ext)
     const dirName = path.dirname(filePath)
@@ -461,20 +538,48 @@ ipcMain.handle('file:exportPdf', async (event, filePath) => {
 
     let bodyHtml
     if (ext === '.md') {
-      const { marked } = await import('marked')
-      marked.setOptions({
-        gfm: true,
-        breaks: false,
-        highlight: function (code, lang) {
-          if (lang && hljs.getLanguage(lang)) {
-            try {
-              return hljs.highlight(code, { language: lang }).value
-            } catch (e) {}
+      // marked v18: syntax highlighting lives in the marked-highlight
+      // extension (the old setOptions({ highlight }) API was removed).
+      // A fresh Marked instance per export avoids accumulating extensions.
+      const { Marked } = await import('marked')
+      const { markedHighlight } = await import('marked-highlight')
+      const md = new Marked(
+        markedHighlight({
+          langPrefix: 'hljs language-',
+          highlight(code, lang) {
+            if (lang && hljs.getLanguage(lang)) {
+              try {
+                return hljs.highlight(code, { language: lang }).value
+              } catch (e) {}
+            }
+            return code
           }
-          return hljs.highlightAuto(code).value
-        }
+        }),
+        { gfm: true, breaks: false }
+      )
+      const rawHtml = md.parse(content, { async: false })
+      // Raw HTML in the source is stripped (matching the preview, which uses
+      // react-markdown without rehype-raw) so a malicious file cannot inject
+      // markup/script into the export window.
+      bodyHtml = sanitizeHtml(rawHtml, {
+        allowedTags: [
+          'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol', 'li',
+          'blockquote', 'code', 'pre', 'span', 'strong', 'em', 'del',
+          'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'br', 'img', 'input'
+        ],
+        allowedAttributes: {
+          a: ['href'],
+          span: ['class'],
+          code: ['class'],
+          pre: ['class'],
+          img: ['src', 'alt'],
+          input: ['type', 'checked', 'disabled'],
+          th: ['align'],
+          td: ['align']
+        },
+        allowedSchemes: ['http', 'https'],
+        disallowedTagsMode: 'discard'
       })
-      bodyHtml = marked(content)
     } else {
       bodyHtml = '<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: \'JetBrains Mono\', monospace; font-size: 10pt; line-height: 1.5;">' +
         content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') +
@@ -582,23 +687,26 @@ ipcMain.handle('file:exportPdf', async (event, filePath) => {
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: true,
+        sandbox: SANDBOX_ENABLED,
         webSecurity: true
       }
     })
 
-    await pdfWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(htmlDoc))
+    let pdfData
+    try {
+      await pdfWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(htmlDoc))
+      pdfData = await pdfWin.webContents.printToPDF({
+        pageSize: 'A4',
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+        printBackground: true
+      })
+    } finally {
+      // Always destroy the hidden window, even if rendering fails.
+      pdfWin.destroy()
+    }
 
-    const pdfData = await pdfWin.webContents.printToPDF({
-      pageSize: 'A4',
-      margins: { top: 0, bottom: 0, left: 0, right: 0 },
-      printBackground: true
-    })
-
-    pdfWin.destroy()
-
-    fs.mkdirSync(path.dirname(saveResult.filePath), { recursive: true })
-    fs.writeFileSync(saveResult.filePath, pdfData)
+    await fsp.mkdir(path.dirname(saveResult.filePath), { recursive: true })
+    await fsp.writeFile(saveResult.filePath, pdfData)
 
     return { ok: true, path: saveResult.filePath }
   } catch (error) {
