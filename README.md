@@ -39,30 +39,30 @@ MDTXT is a frameless desktop application built with Electron and React. Open any
 
 #### Option 1 — `.deb` package (Ubuntu / Debian)
 
-1. Download `mdtxt_1.4.1_amd64.deb` from the [latest release page](https://github.com/sudosaudi/MDTXT/releases/latest).
+1. Download `mdtxt_1.4.2_amd64.deb` from the [latest release page](https://github.com/sudosaudi/MDTXT/releases/latest).
 2. Install it:
 
    ```bash
-   sudo dpkg -i mdtxt_1.4.1_amd64.deb
+   sudo dpkg -i mdtxt_1.4.2_amd64.deb
    ```
 
 Launch from your app menu or run `mdtxt` in the terminal.
 
 #### Option 2 — `.AppImage` (any Linux distro)
 
-1. Download `MDTXT-1.4.1.AppImage` from the [latest release page](https://github.com/sudosaudi/MDTXT/releases/latest).
+1. Download `MDTXT-1.4.2.AppImage` from the [latest release page](https://github.com/sudosaudi/MDTXT/releases/latest).
 2. Make it executable and run it:
 
    ```bash
-   chmod +x MDTXT-1.4.1.AppImage
-   ./MDTXT-1.4.1.AppImage
+   chmod +x MDTXT-1.4.2.AppImage
+   ./MDTXT-1.4.2.AppImage
    ```
 
 ### Windows
 
 #### NSIS Installer (.exe)
 
-1. Download `MDTXT-Setup-1.4.1.exe` from the [latest release page](https://github.com/sudosaudi/MDTXT/releases/latest).
+1. Download `MDTXT-Setup-1.4.2.exe` from the [latest release page](https://github.com/sudosaudi/MDTXT/releases/latest).
 2. Run the installer and follow the setup wizard. The app will be available in your Start Menu.
 
 ## Development Setup
